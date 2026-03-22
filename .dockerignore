@@ -1,0 +1,17 @@
+node_modules
+npm-debug.log*
+dist
+.env
+.env.local
+.git
+.gitignore
+.agent
+docs
+tests
+*.md
+docker-compose*.yml
+Dockerfile
+.dockerignore
+vitest.config.ts
+drizzle.config.ts
+tsconfig.json

@@ -67,7 +67,18 @@ You have a vast library of specialized skills available. **Use them proactively*
 | `chore` | Tooling, workflows, config, dependencies |
 | `style` | Formatting, whitespace, no logic change |
 
-**Scope** = the module, app, or area affected (e.g., `pricing`, `auth`, `db`, `workflows`).
+**Scope** = the module or area affected. Valid scopes for this project:
+- `consumer` — Kafka consumer, event routing
+- `processor` — notification pipeline, dedup, preferences
+- `channels` — email, sms, in-app handlers
+- `templates` — Handlebars rendering
+- `digest` — digest engine, batching
+- `api` — REST endpoints (rules, templates, preferences, notifications)
+- `ws` — WebSocket handler
+- `db` — schema, migrations, client
+- `config` — environment, configuration
+- `auth` — API key middleware
+- `workflows` — AI workflow system
 
 **Rules:**
 - Subject line max 72 characters.
@@ -77,10 +88,10 @@ You have a vast library of specialized skills available. **Use them proactively*
 
 **Examples:**
 ```
-feat(pricing): implement UndercutBracket model with tenant FK
-fix(sending): guard against None accounts on sending page
-refactor(db): extract monitoring queries into dedicated mixin
-test(replies): add 11 tests for intent classification edge cases
+feat(consumer): implement Kafka event consumer with topic pattern matching
+fix(processor): guard against null recipient in opt-out check
+refactor(db): extract migration helpers into shared module
+test(channels): add 8 tests for email delivery error handling
 docs(context): update CODEBASE_CONTEXT.md with new schema tables
 chore(workflows): add sprint velocity to resume workflow
 ```
@@ -152,16 +163,26 @@ chore(workflows): add sprint velocity to resume workflow
 - **Max 200 lines** per class.
 
 ## PowerShell Environment
-- **ALWAYS activate the virtual environment before ANY `python` or `pip` command:**
-  ```powershell
-  .\venv\Scripts\Activate.ps1
-  ```
-- **NEVER run `pip install` without the venv active.** This installs to system Python and breaks other projects.
-- Verify venv is active: prompt shows `(venv)` prefix. If not, activate first.
 - Use `;` to chain commands, **NEVER** `&&`
-- **NEVER use inline `python -c "..."`** for complex code. Write a `.py` file instead.
 - Special characters that break PowerShell: `|`, `>`, `<`, `$`, `()`, `{}`
-- Write Python scripts to files instead of inline commands.
+- Write scripts to files instead of inline commands for complex operations.
+
+## Architecture: Module Dependency Hierarchy (PRD Section 9)
+```
+lib/ → nothing
+db/ → lib/
+templates/ → lib/
+channels/ → lib/, templates/
+consumer/ → db/, lib/
+processor/ → db/, lib/, channels/, templates/
+digest/ → db/, lib/, channels/, templates/
+ws/ → lib/
+api/ → db/, processor/, consumer/, lib/
+server.ts → api/, ws/, consumer/, db/, config
+```
+- **NEVER import upward** in this hierarchy (e.g., `db/` must never import from `processor/`)
+- `lib/` is the foundation — shared types, utilities, errors
+- New modules must declare their position in this hierarchy before implementation
 
 ## Git Branching Strategy
 
