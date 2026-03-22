@@ -6,7 +6,7 @@
 
 ### Dev Branch Workflow
 1. All implementation work happens on `dev` branch
-2. Tests run against local services (Supabase, etc.)
+2. Tests run against local services (PostgreSQL, Redpanda via Docker)
 3. Each completed item → commit → push to `dev`
 4. Run full test suite frequently
 

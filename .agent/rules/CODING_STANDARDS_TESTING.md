@@ -97,14 +97,14 @@ When deciding how to test a service, follow this order:
 3. **Mock** (last resort) — only when options 1 and 2 are impossible
 
 ### Test LIVE (Never Mock)
-- Your database (local Supabase, local Postgres) — validates schema, column names, constraints, query behavior
+- Your database (local PostgreSQL via Docker) — validates schema, column names, constraints, query behavior
 - Your own API endpoints — call the actual route, not a stub
 - Your own server actions / business logic — test the real function
-- File storage you control (local Supabase Storage, local filesystem)
+- Kafka/Redpanda (local via Docker) — validates event consumption, topic routing, message serialization
 
 ### Mock ONLY These
 - Third-party payment APIs (Stripe charges money)
-- Email/SMS delivery (SendGrid/Twilio sends messages)
+- Email delivery (Resend sends emails — mock in tests)
 - Rate-limited external APIs you don't control
 - Services with irreversible side effects
 - Cloud-only services with no local emulator AND no dev tier
@@ -123,56 +123,39 @@ A mock that returns `{ user_id: 1 }` will pass even when the real column is `use
 
 > This section applies to projects with a React frontend. If the project has no UI, skip this section entirely.
 
-### When to Write Component Tests
-- Every **interactive component**: forms, dialogs, accordions, dropdowns, buttons with click handlers
-- Every component with **conditional rendering** (show/hide logic, loading states, error states)
-- Any component where a bug would **block user interaction** (can't type, can't click, can't submit)
-- **Not required for**: pure display components with no interactivity (static text, icons, layout wrappers)
+### When to Write Integration Tests
+- Every **API endpoint**: POST/GET/PUT/DELETE routes on Fastify
+- Every **Kafka consumer handler**: event ingestion, dedup, routing
+- Every **service with database interaction**: CRUD operations, queries, constraints
+- **Not required for**: pure utility functions (test with unit tests instead)
 
 ### What to Test
 | Priority | Test This | Example |
 |----------|-----------|---------|
-| 1 | User interactions | Click button → dialog opens; type in input → value updates |
-| 2 | Conditional rendering | Error state shows message; loading state shows spinner |
-| 3 | Form validation feedback | Submit empty form → validation errors appear |
-| 4 | Accessible roles & labels | Button has correct label; form inputs are labeled |
-| 5 | Callback invocation | onSubmit called with correct data; onCancel fires |
+| 1 | Request/Response cycle | POST /rules → 201 + rule body; GET /rules → list |
+| 2 | Validation & error handling | Missing required field → 400; invalid type → 422 |
+| 3 | Database side effects | POST /rules → row exists in DB; DELETE → row gone |
+| 4 | Event processing | Kafka message → notification created in DB |
+| 5 | Authentication/Authorization | Missing API key → 401; invalid key → 403 |
 
 ### What NOT to Test
-- **Styling** — don't assert on classNames, colors, or CSS
-- **Internal state** — don't reach into `useState` values; test what the USER sees
-- **Snapshot tests** — they create noise and break on every minor change. Test behavior instead.
-- **Implementation details** — don't test that a specific hook was called; test the outcome
-
-### RTL Query Priority (follow this order)
-1. `getByRole` — accessible role (button, textbox, dialog) — **always prefer this**
-2. `getByLabelText` — form inputs with labels
-3. `getByText` — visible text content
-4. `getByPlaceholderText` — placeholder fallback
-5. `getByTestId` — **last resort only** — used when no semantic query works
-
-### RTL Best Practices
-- Use `userEvent` over `fireEvent` — it simulates real browser behavior (focus, blur, keyboard)
-- Use `screen` for queries — not destructured render result
-- Use `waitFor` for async operations — never `setTimeout`
-- Use `within` to scope queries inside a container (e.g., within a specific dialog)
-- Wrap state updates in `act()` only if React warns you — RTL handles this automatically in most cases
+- **Implementation details** — don't assert on internal function calls; test the output
+- **Snapshot tests** — test behavior, not serialized output
+- **Third-party API internals** — mock Resend, test your code around it
 
 ### File Naming & Location
-- Name: `ComponentName.test.tsx` — co-located next to the component file
-- Example: `src/components/ProductFormDialog.test.tsx`
-- Group test utilities in `src/test/helpers.ts` if shared across component tests
+- Name: `module.test.ts` — co-located next to the module file
+- Example: `src/api/rules.test.ts`
+- Group test utilities in `src/test/helpers.ts` if shared across tests
 
 ### Minimum Coverage Rule
-Every interactive React component MUST have at least:
-- **1 happy-path interaction test** (user performs the primary action successfully)
-- **1 error/edge-case test** (empty submission, missing data, disabled state)
-- If a component has 0 tests and it has click/type/submit handlers → it's a bug waiting to happen
+Every API route MUST have at least:
+- **1 happy-path test** (valid request → correct response)
+- **1 error/edge-case test** (invalid input, missing auth, duplicate entry)
+- If a route has 0 tests → it's a regression waiting to happen
 
-### Setup (Vitest + jsdom)
-Component tests run in Node.js with a simulated DOM — no browser needed. Typical setup:
-- `vitest` as test runner (or `jest` if the project already uses it)
-- `@testing-library/react` for component rendering and queries
-- `@testing-library/user-event` for simulating user interactions
-- `jsdom` or `happy-dom` as the test environment
-- Configure in `vitest.config.ts`: `environment: 'jsdom'`
+### Setup (Vitest)
+- `vitest` as test runner
+- Fastify `inject()` for HTTP request simulation (no real server needed)
+- Use test database with transactions rolled back per test
+- Configure in `vitest.config.ts`
