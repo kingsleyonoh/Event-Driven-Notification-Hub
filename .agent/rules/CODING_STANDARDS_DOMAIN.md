@@ -2,6 +2,33 @@
 
 > Part 3 of 3. Also loaded: `CODING_STANDARDS.md`, `CODING_STANDARDS_TESTING.md`
 
+## Architecture: Module Dependency Hierarchy (PRD Section 9)
+```
+lib/ → nothing
+db/ → lib/
+templates/ → lib/
+channels/ → lib/, templates/
+consumer/ → db/, lib/
+processor/ → db/, lib/, channels/, templates/
+digest/ → db/, lib/, channels/, templates/
+ws/ → lib/
+api/ → db/, processor/, consumer/, lib/
+server.ts → api/, ws/, consumer/, db/, config
+```
+- **NEVER import upward** in this hierarchy (e.g., `db/` must never import from `processor/`)
+- `lib/` is the foundation — shared types, utilities, errors
+- New modules must declare their position in this hierarchy before implementation
+
+## Git Branching Strategy
+
+### Two-Branch Model
+- **`main`** — Production only. Code merges here when ready to deploy.
+- **`dev`** — Active development. All work happens here.
+- `/implement-next` always runs on `dev`.
+- Tests always run against local dev services on `dev` branch.
+- Merge `dev` → `main` only when all tests pass and feature is complete.
+- After merge, run migrations against production.
+
 ## Deployment Flow (Dev → Production)
 
 ### Dev Branch Workflow

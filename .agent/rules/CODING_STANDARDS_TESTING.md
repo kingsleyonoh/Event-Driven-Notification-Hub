@@ -119,9 +119,9 @@ A mock that returns `{ user_id: 1 }` will pass even when the real column is `use
 - Each test MUST clean up after itself (delete rows, reset state)
 - Use transactions with rollback when possible for speed
 
-## Component Testing (React Testing Library)
+## Backend API & Integration Testing
 
-> This section applies to projects with a React frontend. If the project has no UI, skip this section entirely.
+> This section applies to backend-only projects (APIs, workers, event consumers). If the project has a frontend, see the Component Testing section in the template instead.
 
 ### When to Write Integration Tests
 - Every **API endpoint**: POST/GET/PUT/DELETE routes on Fastify
