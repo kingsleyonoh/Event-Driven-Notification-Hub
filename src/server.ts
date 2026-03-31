@@ -11,6 +11,7 @@ import { adminAuthPlugin } from './api/middleware/admin-auth.js';
 import { healthRoutes } from './api/health.routes.js';
 import { rulesRoutes } from './api/rules.routes.js';
 import { templatesRoutes } from './api/templates.routes.js';
+import { eventsRoutes } from './api/events.routes.js';
 
 export async function buildApp(overrides?: { config?: Config; db?: Database }) {
   const config = overrides?.config ?? loadConfig();
@@ -38,6 +39,10 @@ export async function buildApp(overrides?: { config?: Config; db?: Database }) {
   });
   await app.register(rulesRoutes, { db });
   await app.register(templatesRoutes, { db });
+  await app.register(eventsRoutes, {
+    kafkaBrokers: config.KAFKA_BROKERS,
+    kafkaTopics: 'events.notifications',
+  });
 
   return { app, config, db, sql };
 }
