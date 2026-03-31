@@ -1,0 +1,38 @@
+{
+  "name": "event-driven-notification-hub",
+  "version": "1.0.0",
+  "main": "dist/server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "db:migrate": "drizzle-kit migrate",
+    "topics:create": "tsx src/scripts/create-topics.ts"
+  },
+  "description": "Event-driven notification hub that consumes Kafka events and routes notifications across email, SMS, in-app, and digest channels.",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.8.4",
+    "handlebars": "^4.7.9",
+    "kafkajs": "^2.2.4",
+    "pino": "^10.3.1",
+    "postgres": "^3.4.8",
+    "resend": "^6.10.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@types/supertest": "^7.2.0",
+    "drizzle-kit": "^0.31.10",
+    "supertest": "^7.2.2",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.2"
+  }
+}
