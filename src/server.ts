@@ -9,6 +9,7 @@ import { rateLimiterPlugin } from './api/middleware/rate-limiter.js';
 import { authPlugin } from './api/middleware/auth.js';
 import { adminAuthPlugin } from './api/middleware/admin-auth.js';
 import { healthRoutes } from './api/health.routes.js';
+import { rulesRoutes } from './api/rules.routes.js';
 
 export async function buildApp(overrides?: { config?: Config; db?: Database }) {
   const config = overrides?.config ?? loadConfig();
@@ -34,6 +35,7 @@ export async function buildApp(overrides?: { config?: Config; db?: Database }) {
     kafkaBrokers: config.KAFKA_BROKERS,
     resendApiKey: config.RESEND_API_KEY,
   });
+  await app.register(rulesRoutes, { db });
 
   return { app, config, db, sql };
 }
