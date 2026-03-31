@@ -10,6 +10,7 @@ import { authPlugin } from './api/middleware/auth.js';
 import { adminAuthPlugin } from './api/middleware/admin-auth.js';
 import { healthRoutes } from './api/health.routes.js';
 import { rulesRoutes } from './api/rules.routes.js';
+import { templatesRoutes } from './api/templates.routes.js';
 
 export async function buildApp(overrides?: { config?: Config; db?: Database }) {
   const config = overrides?.config ?? loadConfig();
@@ -36,6 +37,7 @@ export async function buildApp(overrides?: { config?: Config; db?: Database }) {
     resendApiKey: config.RESEND_API_KEY,
   });
   await app.register(rulesRoutes, { db });
+  await app.register(templatesRoutes, { db });
 
   return { app, config, db, sql };
 }
