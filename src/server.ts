@@ -2,10 +2,18 @@ import { config as dotenvConfig } from 'dotenv';
 dotenvConfig({ path: '.env.local' });
 
 import Fastify from 'fastify';
-import { loadConfig } from './config.js';
+import { loadConfig, type Config } from './config.js';
+import { createDb, type Database } from './db/client.js';
+import { errorHandlerPlugin } from './api/middleware/error-handler.js';
+import { rateLimiterPlugin } from './api/middleware/rate-limiter.js';
+import { authPlugin } from './api/middleware/auth.js';
+import { adminAuthPlugin } from './api/middleware/admin-auth.js';
 
-export function buildApp() {
-  const config = loadConfig();
+export async function buildApp(overrides?: { config?: Config; db?: Database }) {
+  const config = overrides?.config ?? loadConfig();
+  const { db, sql } = overrides?.db
+    ? { db: overrides.db, sql: undefined }
+    : createDb(config.DATABASE_URL);
 
   const app = Fastify({
     logger: {
@@ -13,15 +21,22 @@ export function buildApp() {
     },
   });
 
+  // Middleware — registration order matters
+  await app.register(errorHandlerPlugin);
+  await app.register(rateLimiterPlugin);
+  await app.register(adminAuthPlugin, { adminApiKey: config.ADMIN_API_KEY });
+  await app.register(authPlugin, { db });
+
+  // Public routes
   app.get('/api/health', async () => {
     return { status: 'ok' };
   });
 
-  return { app, config };
+  return { app, config, db, sql };
 }
 
 async function start() {
-  const { app, config } = buildApp();
+  const { app, config } = await buildApp();
 
   try {
     await app.listen({ port: config.PORT, host: config.HOST });

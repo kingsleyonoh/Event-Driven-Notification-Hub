@@ -16,9 +16,11 @@
   "description": "Event-driven notification hub that consumes Kafka events and routes notifications across email, SMS, in-app, and digest channels.",
   "license": "ISC",
   "dependencies": {
+    "@fastify/rate-limit": "^10.3.0",
     "dotenv": "^17.3.1",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.8.4",
+    "fastify-plugin": "^5.1.0",
     "handlebars": "^4.7.9",
     "kafkajs": "^2.2.4",
     "pino": "^10.3.1",
