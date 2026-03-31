@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { tenants, templates, notificationRules } from '../db/schema.js';
+import { tenants, templates, notificationRules, userPreferences, notifications, digestQueue } from '../db/schema.js';
 import type { Database } from '../db/client.js';
 
 export async function createTestTenant(
@@ -60,8 +60,46 @@ export async function createTestRule(
   return rule;
 }
 
+export async function createTestPreferences(
+  db: Database,
+  tenantId: string,
+  userId: string,
+  overrides: Partial<typeof userPreferences.$inferInsert> = {},
+) {
+  const [prefs] = await db
+    .insert(userPreferences)
+    .values({
+      tenantId,
+      userId,
+      ...overrides,
+    })
+    .returning();
+  return prefs;
+}
+
+export async function createTestNotification(
+  db: Database,
+  overrides: Partial<typeof notifications.$inferInsert> & {
+    tenantId: string;
+    eventType: string;
+    eventId: string;
+    recipient: string;
+    channel: 'email' | 'sms' | 'in_app';
+    status: 'pending' | 'sent' | 'failed' | 'queued_digest' | 'skipped' | 'held';
+  },
+) {
+  const [notif] = await db
+    .insert(notifications)
+    .values(overrides)
+    .returning();
+  return notif;
+}
+
 export async function cleanupTestData(db: Database, tenantId: string) {
+  await db.delete(digestQueue).where(eq(digestQueue.tenantId, tenantId));
+  await db.delete(notifications).where(eq(notifications.tenantId, tenantId));
   await db.delete(notificationRules).where(eq(notificationRules.tenantId, tenantId));
   await db.delete(templates).where(eq(templates.tenantId, tenantId));
+  await db.delete(userPreferences).where(eq(userPreferences.tenantId, tenantId));
   await db.delete(tenants).where(eq(tenants.id, tenantId));
 }
