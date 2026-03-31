@@ -109,6 +109,14 @@ When deciding how to test a service, follow this order:
 - Services with irreversible side effects
 - Cloud-only services with no local emulator AND no dev tier
 
+### Common Mock Violations (DO NOT DO THESE)
+- ❌ Mocking your database client to return fake rows — hit the real database
+- ❌ Mocking your own API routes with `nock`/`msw` — call the real endpoint via Fastify `inject()`
+- ❌ Using an in-memory SQLite when production uses PostgreSQL — use the real PostgreSQL
+- ❌ Mocking Redpanda/Kafka when it's running in Docker — connect to the real instance
+- ✅ Mocking Resend API — you don't want to send real emails in tests
+- ✅ Mocking an external API with rate limits — you don't control their uptime
+
 ### No Services? No Problem
 If the project has no external services (CLI tool, library, static site), this policy doesn't apply — just write standard unit tests.
 

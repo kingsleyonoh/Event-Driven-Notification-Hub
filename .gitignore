@@ -38,5 +38,12 @@ logs/
 
 # Internal project planning
 docs/progress.md
+docs/architect_journal.md
 docs/*PRD*.md
 docs/*prd*.md
+
+# Multi-agent platform context (auto-generated, not committed)
+CLAUDE.md
+.claude/
+AGENTS.md
+.cursorrules

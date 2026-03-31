@@ -131,8 +131,17 @@ If multiple functions on the same request path call the same expensive operation
 ### Parallel by Default
 Independent operations (DB queries, API calls, file reads) MUST run concurrently (`Promise.all`, `asyncio.gather`, goroutines, etc.). Sequential execution is only for data-dependent chains where one result feeds the next.
 
-### Wire It or Delete It
-If you create a utility, middleware, or proxy file, connect it to the framework entry point in the same commit. Unwired code creates false confidence — the feature "exists" but doesn't execute.
+### Wire It or Delete It (ENFORCED)
+If you create a utility, middleware, handler, route, or service file, connect it to the framework entry point **in the same commit**. Unwired code creates false confidence — the feature "exists" but doesn't execute.
+
+**This means:**
+- New route handler → add it to the Fastify router in the same commit
+- New middleware → add it to the middleware chain in the same commit
+- New database query function → call it from a route/handler in the same commit
+- New Kafka consumer handler → register it with the consumer in the same commit
+- New utility module → import and use it from the calling code in the same commit
+
+If a function has no caller, a route has no handler, or a middleware is defined but not applied — it is dead code regardless of whether tests pass.
 
 ### Compound Load Audit
 After implementing 5+ operations callable from a single entry point (page render, API endpoint, CLI command), audit total I/O calls. Features built incrementally work in isolation but compound into latency regressions that correctness tests never catch.
