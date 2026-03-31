@@ -8,6 +8,7 @@ import { errorHandlerPlugin } from './api/middleware/error-handler.js';
 import { rateLimiterPlugin } from './api/middleware/rate-limiter.js';
 import { authPlugin } from './api/middleware/auth.js';
 import { adminAuthPlugin } from './api/middleware/admin-auth.js';
+import { healthRoutes } from './api/health.routes.js';
 
 export async function buildApp(overrides?: { config?: Config; db?: Database }) {
   const config = overrides?.config ?? loadConfig();
@@ -27,9 +28,11 @@ export async function buildApp(overrides?: { config?: Config; db?: Database }) {
   await app.register(adminAuthPlugin, { adminApiKey: config.ADMIN_API_KEY });
   await app.register(authPlugin, { db });
 
-  // Public routes
-  app.get('/api/health', async () => {
-    return { status: 'ok' };
+  // Routes
+  await app.register(healthRoutes, {
+    db,
+    kafkaBrokers: config.KAFKA_BROKERS,
+    resendApiKey: config.RESEND_API_KEY,
   });
 
   return { app, config, db, sql };

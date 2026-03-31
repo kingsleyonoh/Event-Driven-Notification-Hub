@@ -1,0 +1,105 @@
+import { z } from 'zod/v4';
+
+// ─── Shared enums ────────────────────────────────────────────────────
+
+export const channelEnum = z.enum(['email', 'sms', 'in_app']);
+export const urgencyEnum = z.enum(['low', 'normal', 'high', 'critical']);
+export const recipientTypeEnum = z.enum(['event_field', 'static', 'role']);
+export const digestScheduleEnum = z.enum(['hourly', 'daily', 'weekly']);
+export const notificationStatusEnum = z.enum([
+  'pending', 'sent', 'failed', 'queued_digest', 'skipped', 'held',
+]);
+
+// ─── Rules ───────────────────────────────────────────────────────────
+
+export const createRuleSchema = z.object({
+  event_type: z.string().min(1),
+  channel: channelEnum,
+  template_id: z.string().uuid(),
+  recipient_type: recipientTypeEnum,
+  recipient_value: z.string().min(1),
+  urgency: urgencyEnum.optional().default('normal'),
+  enabled: z.boolean().optional().default(true),
+});
+
+export const updateRuleSchema = z.object({
+  event_type: z.string().min(1).optional(),
+  channel: channelEnum.optional(),
+  template_id: z.string().uuid().optional(),
+  recipient_type: recipientTypeEnum.optional(),
+  recipient_value: z.string().min(1).optional(),
+  urgency: urgencyEnum.optional(),
+  enabled: z.boolean().optional(),
+});
+
+// ─── Templates ───────────────────────────────────────────────────────
+
+export const createTemplateSchema = z.object({
+  name: z.string().min(1).refine((val) => !val.startsWith('__'), {
+    message: 'Template names starting with __ are reserved for system use',
+  }),
+  channel: channelEnum,
+  subject: z.string().optional(),
+  body: z.string().min(1),
+});
+
+export const updateTemplateSchema = z.object({
+  name: z.string().min(1).refine((val) => !val.startsWith('__'), {
+    message: 'Template names starting with __ are reserved for system use',
+  }).optional(),
+  channel: channelEnum.optional(),
+  subject: z.string().optional(),
+  body: z.string().min(1).optional(),
+});
+
+export const previewTemplateSchema = z.object({
+  payload: z.record(z.string(), z.unknown()),
+});
+
+// ─── Preferences ─────────────────────────────────────────────────────
+
+export const upsertPreferencesSchema = z.object({
+  email: z.string().email().optional(),
+  phone: z.string().min(1).optional(),
+  opt_out: z.record(z.string(), z.array(z.string())).optional(),
+  quiet_hours: z.object({
+    start: z.string(),
+    end: z.string(),
+    timezone: z.string(),
+  }).optional(),
+  digest_mode: z.boolean().optional(),
+  digest_schedule: digestScheduleEnum.optional(),
+});
+
+// ─── Events ──────────────────────────────────────────────────────────
+
+export const publishEventSchema = z.object({
+  event_type: z.string().min(1),
+  event_id: z.string().min(1),
+  payload: z.record(z.string(), z.unknown()),
+});
+
+// ─── Admin Tenants ───────────────────────────────────────────────────
+
+export const createTenantSchema = z.object({
+  name: z.string().min(1),
+  config: z.record(z.string(), z.unknown()).optional(),
+});
+
+export const updateTenantSchema = z.object({
+  name: z.string().min(1).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
+  enabled: z.boolean().optional(),
+});
+
+// ─── Pagination ──────────────────────────────────────────────────────
+
+export const paginationSchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional().default(25),
+  status: notificationStatusEnum.optional(),
+  channel: channelEnum.optional(),
+  created_after: z.string().datetime().optional(),
+  created_before: z.string().datetime().optional(),
+  userId: z.string().optional(),
+});

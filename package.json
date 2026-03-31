@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "db:migrate": "drizzle-kit migrate",
+    "db:seed": "tsx src/scripts/seed.ts",
     "topics:create": "tsx src/scripts/create-topics.ts"
   },
   "description": "Event-driven notification hub that consumes Kafka events and routes notifications across email, SMS, in-app, and digest channels.",
