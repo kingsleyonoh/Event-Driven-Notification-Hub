@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { db, sql } from '../test/setup.js';
 import {
@@ -56,7 +56,8 @@ describe('processNotification', () => {
       .where(eq(notifications.eventId, event.event_id));
 
     expect(notif).toBeDefined();
-    expect(notif.status).toBe('pending');
+    expect(notif.status).toBe('sent');
+    expect(notif.deliveredAt).toBeInstanceOf(Date);
     expect(notif.subject).toBe('Hello Alice');
     expect(notif.bodyPreview).toContain('Welcome Alice');
     expect(notif.recipient).toBe('test@example.com');
@@ -110,7 +111,7 @@ describe('processNotification', () => {
       .where(eq(notifications.eventId, eventId));
 
     expect(notifs).toHaveLength(2);
-    expect(notifs[0].status).toBe('pending');
+    expect(notifs[0].status).toBe('sent');
     expect(notifs[1].status).toBe('skipped');
     expect(notifs[1].skipReason).toBe('deduplicated');
   });
@@ -233,6 +234,53 @@ describe('processNotification', () => {
       .where(eq(notifications.eventId, event.event_id));
 
     expect(notif.bodyPreview!.length).toBe(500);
+  });
+
+  it('updates status to sent with delivered_at on successful dispatch', async () => {
+    const event = makeEvent({ event_id: `sent-${Date.now()}` });
+
+    await processNotification(db, event, rule, 'test@example.com', {
+      dedupWindowMinutes: 60,
+      digestSchedule: 'daily',
+    });
+
+    const [notif] = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.eventId, event.event_id));
+
+    expect(notif.status).toBe('sent');
+    expect(notif.deliveredAt).toBeInstanceOf(Date);
+  });
+
+  it('updates status to failed with error_message on dispatch failure', async () => {
+    // Import and mock dispatcher to simulate failure
+    const dispatcherModule = await import('../channels/dispatcher.js');
+    const originalDispatch = dispatcherModule.dispatch;
+
+    // Temporarily replace dispatch with a failing version
+    vi.spyOn(dispatcherModule, 'dispatch').mockResolvedValueOnce({
+      success: false,
+      error: 'Resend API rate limit exceeded',
+    });
+
+    const event = makeEvent({ event_id: `fail-${Date.now()}` });
+
+    await processNotification(db, event, rule, 'test@example.com', {
+      dedupWindowMinutes: 60,
+      digestSchedule: 'daily',
+    });
+
+    const [notif] = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.eventId, event.event_id));
+
+    expect(notif.status).toBe('failed');
+    expect(notif.errorMessage).toBe('Resend API rate limit exceeded');
+
+    // Restore
+    vi.restoreAllMocks();
   });
 
   it('skips when no delivery address found', async () => {

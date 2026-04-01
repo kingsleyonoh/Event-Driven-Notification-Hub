@@ -4,7 +4,7 @@ import { resolveDeliveryAddress, checkOptOut, isWithinQuietHours } from './prefe
 import { isDuplicate } from './deduplicator.js';
 import { renderSubjectAndBody } from '../templates/renderer.js';
 import { computeScheduledFor } from '../lib/scheduling.js';
-import { dispatch } from '../channels/dispatcher.js';
+import { dispatch, type DispatchConfig } from '../channels/dispatcher.js';
 import { createLogger } from '../lib/logger.js';
 import type { Database } from '../db/client.js';
 import type { KafkaEvent } from '../consumer/kafka.js';
@@ -28,6 +28,7 @@ interface RuleRecord {
 interface PipelineConfig {
   dedupWindowMinutes: number;
   digestSchedule: 'hourly' | 'daily' | 'weekly';
+  dispatch?: DispatchConfig;
 }
 
 export async function processNotification(
@@ -148,9 +149,14 @@ export async function processNotification(
   // 8. Dispatch
   const result = await dispatch(rule.channel, deliveryAddress, renderedSubject, renderedBody, {
     tenantId, notificationId: notif.id,
-  });
+  }, config.dispatch);
 
-  if (!result.success) {
+  if (result.success) {
+    await db
+      .update(notifications)
+      .set({ status: 'sent', deliveredAt: new Date() })
+      .where(eq(notifications.id, notif.id));
+  } else {
     await db
       .update(notifications)
       .set({ status: 'failed', errorMessage: result.error ?? 'dispatch failed' })

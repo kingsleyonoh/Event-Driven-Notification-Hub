@@ -138,16 +138,20 @@ notification-hub/
 | Lint/check | `npx tsc --noEmit` |
 | Build | `npm run build` |
 | Migrate DB | `npx drizzle-kit migrate` |
+| Seed DB | `npm run db:seed` |
 | Create topics | `npm run topics:create` |
 | Docker (dev) | `docker compose up -d` |
 
 ## Key Patterns & Conventions
 
 - File naming: `kebab-case.ts` for modules, `camelCase` for variables/functions
-- Error handling: centralized `{ error: { code, message, details } }` format
-- Auth: API key in `X-API-Key` header, validated by middleware
+- Error handling: `AppError` subclasses + `toErrorResponse()` → `{ error: { code, message, details } }`
+- Auth: `X-API-Key` → tenant lookup → `request.tenantId` injected; `X-Admin-Key` for `/api/admin/*`
+- Rate limiting: `@fastify/rate-limit`, `global: false`, per-route via `config.rateLimit`
+- Validation: Zod v4 schemas in `src/api/schemas.ts`
 - Pagination: cursor-based on notification listings
 - Import order: std → third-party → local, blank line between groups
+
 
 ## Gotchas & Lessons Learned
 
@@ -155,7 +159,12 @@ notification-hub/
 
 | Date | Area | Gotcha | Discovered In |
 |------|------|--------|---------------|
-| | | | |
+| 2026-03-31 | config | dotenv in server.ts only, not config.ts — tests pollute process.env otherwise | config.ts TDD |
+| 2026-03-31 | infra | Redpanda external listener on port 19092, not 9092 | Docker setup |
+| 2026-03-31 | db | Docker PG mapped to port 5433 (local PG conflicts on 5432) | DB migration |
+| 2026-03-31 | db | `drizzle-kit migrate` hangs on Windows — use `docker exec psql` | DB migration |
+| 2026-03-31 | api | `@fastify/rate-limit` errorResponseBuilder conflicts with setErrorHandler — handle 429 in error handler | Rate limiter |
+| 2026-03-31 | db | Drizzle wraps PG errors — unique violations at `err.cause.code === '23505'` | Rules CRUD |
 
 ## Shared Foundation (MUST READ before any implementation)
 
@@ -169,11 +178,16 @@ notification-hub/
 | Config | `src/config.ts` | Environment variable loading and validation |
 | Error handling | `src/lib/errors.ts` | Centralized error types and handler |
 | Server setup | `src/server.ts` | Fastify app creation, plugin registration |
-| Auth middleware | `src/api/middleware/` | API key validation guard |
+| Auth middleware | `src/api/middleware/auth.ts` | API key → tenant lookup, injects `request.tenantId` + `request.tenant` |
+| Admin auth | `src/api/middleware/admin-auth.ts` | X-Admin-Key validation for `/api/admin/*` routes |
+| Error handler | `src/api/middleware/error-handler.ts` | Global Fastify error handler, formats AppError → standard response |
+| Rate limiter | `src/api/middleware/rate-limiter.ts` | @fastify/rate-limit with per-route config overrides |
+| Validation schemas | `src/api/schemas.ts` | Zod v4 schemas for all API endpoints |
+| Health routes | `src/api/health.routes.ts` | Health check with PG, Kafka, Resend status |
+| Test setup | `src/test/setup.ts` | Shared test DB connection (db + sql) |
+| Test factories | `src/test/factories.ts` | createTestTenant, createTestTemplate, createTestRule, cleanupTestData |
 
 ## Deep References
-
-> For detailed implementation patterns, read the source directly.
 
 | Topic | Where to look |
 |-------|--------------|
@@ -186,4 +200,4 @@ notification-hub/
 | REST API routes | `src/api/` |
 | WebSocket | `src/ws/` |
 | Database | `src/db/` |
-| Test patterns | `tests/` |
+| Tests | `src/**/*.test.ts` |
