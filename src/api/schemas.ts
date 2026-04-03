@@ -92,6 +92,13 @@ export const updateTenantSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
+// ─── Heartbeats ─────────────────────────────────────────────────────
+
+export const upsertHeartbeatSchema = z.object({
+  source_name: z.string().min(1),
+  interval_minutes: z.number().int().min(1).optional(),
+});
+
 // ─── Pagination ──────────────────────────────────────────────────────
 
 export const paginationSchema = z.object({
