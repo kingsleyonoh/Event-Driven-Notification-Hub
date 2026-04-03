@@ -14,6 +14,7 @@ import { templatesRoutes } from './api/templates.routes.js';
 import { eventsRoutes } from './api/events.routes.js';
 import { preferencesRoutes } from './api/preferences.routes.js';
 import { notificationsRoutes } from './api/notifications.routes.js';
+import { adminRoutes } from './api/admin.routes.js';
 import { wsPlugin } from './ws/handler.js';
 
 export async function buildApp(overrides?: { config?: Config; db?: Database }) {
@@ -48,6 +49,7 @@ export async function buildApp(overrides?: { config?: Config; db?: Database }) {
   });
   await app.register(preferencesRoutes, { db });
   await app.register(notificationsRoutes, { db });
+  await app.register(adminRoutes, { db });
 
   // WebSocket
   await app.register(wsPlugin, { db });

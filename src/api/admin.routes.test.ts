@@ -1,0 +1,191 @@
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import Fastify from 'fastify';
+import { eq } from 'drizzle-orm';
+import { db, sql } from '../test/setup.js';
+import { tenants } from '../db/schema.js';
+import { errorHandlerPlugin } from './middleware/error-handler.js';
+import { adminAuthPlugin } from './middleware/admin-auth.js';
+import { adminRoutes } from './admin.routes.js';
+
+const ADMIN_KEY = 'test-admin-key-secret';
+const createdTenantIds: string[] = [];
+
+beforeAll(async () => {});
+
+afterAll(async () => {
+  for (const id of createdTenantIds) {
+    await db.delete(tenants).where(eq(tenants.id, id));
+  }
+  await sql.end();
+});
+
+async function buildTestApp() {
+  const app = Fastify({ logger: false });
+  await app.register(errorHandlerPlugin);
+  await app.register(adminAuthPlugin, { adminApiKey: ADMIN_KEY });
+  await app.register(adminRoutes, { db });
+  return app;
+}
+
+function adminHeaders() {
+  return { 'x-admin-key': ADMIN_KEY };
+}
+
+describe('Admin Tenants API — Authentication', () => {
+  it('rejects request with missing admin key', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/tenants',
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('rejects request with invalid admin key', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/tenants',
+      headers: { 'x-admin-key': 'wrong-key' },
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe('Admin Tenants API — CRUD', () => {
+  it('POST /api/admin/tenants — creates tenant with auto-generated API key', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/tenants',
+      headers: adminHeaders(),
+      payload: { name: 'Integration Test Tenant' },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.tenant).toBeDefined();
+    expect(body.tenant.name).toBe('Integration Test Tenant');
+    expect(body.tenant.apiKey).toBeDefined();
+    expect(typeof body.tenant.apiKey).toBe('string');
+    expect(body.tenant.apiKey.length).toBeGreaterThan(16);
+    expect(body.tenant.enabled).toBe(true);
+    expect(body.tenant.id).toBeDefined();
+    createdTenantIds.push(body.tenant.id);
+  });
+
+  it('POST /api/admin/tenants — rejects missing name', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/tenants',
+      headers: adminHeaders(),
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json();
+    expect(body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('POST /api/admin/tenants — accepts optional config', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/tenants',
+      headers: adminHeaders(),
+      payload: { name: 'Configured Tenant', config: { dedup_window: 30 } },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json();
+    expect(body.tenant.config).toEqual({ dedup_window: 30 });
+    createdTenantIds.push(body.tenant.id);
+  });
+
+  it('GET /api/admin/tenants — lists all tenants', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/tenants',
+      headers: adminHeaders(),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(Array.isArray(body.tenants)).toBe(true);
+    expect(body.tenants.length).toBeGreaterThanOrEqual(2); // at least the two created above
+  });
+
+  it('GET /api/admin/tenants/:id — returns single tenant', async () => {
+    const id = createdTenantIds[0];
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/admin/tenants/${id}`,
+      headers: adminHeaders(),
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.tenant.id).toBe(id);
+    expect(body.tenant.name).toBe('Integration Test Tenant');
+  });
+
+  it('GET /api/admin/tenants/:id — returns 404 for unknown id', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/admin/tenants/nonexistent-tenant',
+      headers: adminHeaders(),
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('PUT /api/admin/tenants/:id — updates tenant fields', async () => {
+    const id = createdTenantIds[0];
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/api/admin/tenants/${id}`,
+      headers: adminHeaders(),
+      payload: { name: 'Updated Name', enabled: false },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.tenant.name).toBe('Updated Name');
+    expect(body.tenant.enabled).toBe(false);
+  });
+
+  it('DELETE /api/admin/tenants/:id — removes tenant', async () => {
+    // Create a tenant specifically for deletion
+    const app = await buildTestApp();
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/admin/tenants',
+      headers: adminHeaders(),
+      payload: { name: 'To Be Deleted' },
+    });
+    const deleteId = createRes.json().tenant.id;
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/api/admin/tenants/${deleteId}`,
+      headers: adminHeaders(),
+    });
+
+    expect(res.statusCode).toBe(204);
+
+    // Verify it's gone
+    const getRes = await app.inject({
+      method: 'GET',
+      url: `/api/admin/tenants/${deleteId}`,
+      headers: adminHeaders(),
+    });
+    expect(getRes.statusCode).toBe(404);
+  });
+});
