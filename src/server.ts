@@ -17,6 +17,12 @@ import { notificationsRoutes } from './api/notifications.routes.js';
 import { adminRoutes } from './api/admin.routes.js';
 import { heartbeatRoutes } from './heartbeat/routes.js';
 import { wsPlugin } from './ws/handler.js';
+import { createJobScheduler } from './jobs/scheduler.js';
+import { processDigestQueue } from './digest/engine.js';
+import { releaseHeldNotifications } from './processor/quiet-hours-release.js';
+import { checkStaleHeartbeats } from './heartbeat/checker.js';
+import { cleanupOldNotifications } from './processor/notification-cleanup.js';
+import { disconnectProducer } from './consumer/producer.js';
 
 export async function buildApp(overrides?: { config?: Config; db?: Database }) {
   const config = overrides?.config ?? loadConfig();
@@ -60,10 +66,53 @@ export async function buildApp(overrides?: { config?: Config; db?: Database }) {
 }
 
 async function start() {
-  const { app, config } = await buildApp();
+  const { app, config, db, sql } = await buildApp();
+
+  const emailConfig = { apiKey: config.RESEND_API_KEY, from: config.RESEND_FROM };
+  const dispatchConfig = { email: emailConfig };
+
+  // Background jobs
+  const digestIntervalMs = config.DIGEST_SCHEDULE === 'hourly' ? 3600_000 : 86400_000;
+
+  const scheduler = createJobScheduler([
+    {
+      name: 'digest-sender',
+      fn: () => processDigestQueue(db, emailConfig).then(() => {}),
+      intervalMs: digestIntervalMs,
+    },
+    {
+      name: 'quiet-hours-release',
+      fn: () => releaseHeldNotifications(db, dispatchConfig).then(() => {}),
+      intervalMs: config.QUIET_HOURS_CHECK_INTERVAL_MS,
+    },
+    {
+      name: 'heartbeat-checker',
+      fn: () => checkStaleHeartbeats(db, config.KAFKA_BROKERS).then(() => {}),
+      intervalMs: 900_000, // 15 minutes
+    },
+    {
+      name: 'notification-cleanup',
+      fn: () => cleanupOldNotifications(db, config.NOTIFICATION_RETENTION_DAYS).then(() => {}),
+      intervalMs: 86400_000, // daily
+    },
+  ]);
+
+  // Graceful shutdown
+  const shutdown = async (signal: string) => {
+    app.log.info({ signal }, 'shutting down');
+    scheduler.stop();
+    await app.close();
+    await disconnectProducer();
+    if (sql) await sql.end();
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 
   try {
     await app.listen({ port: config.PORT, host: config.HOST });
+    scheduler.start();
   } catch (err) {
     app.log.error(err);
     process.exit(1);
