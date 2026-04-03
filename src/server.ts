@@ -12,6 +12,8 @@ import { healthRoutes } from './api/health.routes.js';
 import { rulesRoutes } from './api/rules.routes.js';
 import { templatesRoutes } from './api/templates.routes.js';
 import { eventsRoutes } from './api/events.routes.js';
+import { preferencesRoutes } from './api/preferences.routes.js';
+import { notificationsRoutes } from './api/notifications.routes.js';
 import { wsPlugin } from './ws/handler.js';
 
 export async function buildApp(overrides?: { config?: Config; db?: Database }) {
@@ -44,6 +46,8 @@ export async function buildApp(overrides?: { config?: Config; db?: Database }) {
     kafkaBrokers: config.KAFKA_BROKERS,
     kafkaTopics: 'events.notifications',
   });
+  await app.register(preferencesRoutes, { db });
+  await app.register(notificationsRoutes, { db });
 
   // WebSocket
   await app.register(wsPlugin, { db });
