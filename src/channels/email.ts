@@ -21,7 +21,7 @@ export async function sendEmail(
     const { data, error } = await resend.emails.send({
       from: config.from,
       to,
-      subject: subject ?? undefined,
+      subject: subject ?? '',
       html: body,
     });
 

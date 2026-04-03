@@ -21,6 +21,7 @@ declare module 'fastify' {
 }
 
 const PUBLIC_ROUTES = ['/api/health'];
+const PUBLIC_PREFIXES = ['/ws/'];
 
 interface AuthPluginOptions {
   db: Database;
@@ -34,6 +35,10 @@ export const authPlugin = fp<AuthPluginOptions>(async (app, opts) => {
 
   app.addHook('onRequest', async (request: FastifyRequest) => {
     if (PUBLIC_ROUTES.includes(request.url)) {
+      return;
+    }
+
+    if (PUBLIC_PREFIXES.some((prefix) => request.url.startsWith(prefix))) {
       return;
     }
 

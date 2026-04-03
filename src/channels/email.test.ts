@@ -55,7 +55,7 @@ describe('sendEmail', () => {
     expect(result.error).toContain('Rate limit exceeded');
   });
 
-  it('sends email with undefined subject when subject is null', async () => {
+  it('sends email with empty subject when subject is null', async () => {
     mockSend.mockResolvedValue({ data: { id: 'msg-456' }, error: null });
 
     const result = await sendEmail('user@example.com', null, 'Body only', config);
@@ -64,7 +64,7 @@ describe('sendEmail', () => {
     expect(mockSend).toHaveBeenCalledWith({
       from: 'noreply@test.com',
       to: 'user@example.com',
-      subject: undefined,
+      subject: '',
       html: 'Body only',
     });
   });

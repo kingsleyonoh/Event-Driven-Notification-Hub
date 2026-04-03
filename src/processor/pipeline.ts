@@ -148,7 +148,7 @@ export async function processNotification(
 
   // 8. Dispatch
   const result = await dispatch(rule.channel, deliveryAddress, renderedSubject, renderedBody, {
-    tenantId, notificationId: notif.id,
+    tenantId, notificationId: notif.id, eventType,
   }, config.dispatch);
 
   if (result.success) {

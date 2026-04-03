@@ -1,5 +1,6 @@
 import { sendEmail, type EmailConfig } from './email.js';
 import { sendSms } from './sms.js';
+import { sendInApp } from './in-app.js';
 import { createLogger } from '../lib/logger.js';
 
 const logger = createLogger('dispatcher');
@@ -18,7 +19,7 @@ export async function dispatch(
   address: string,
   subject: string | null,
   body: string,
-  metadata: { tenantId: string; notificationId: string },
+  metadata: { tenantId: string; notificationId: string; eventType?: string },
   config?: DispatchConfig,
 ): Promise<DispatchResult> {
   switch (channel) {
@@ -36,11 +37,10 @@ export async function dispatch(
       return sendSms(address, body, metadata);
 
     case 'in_app':
-      // Stub — WebSocket handler will replace this in Phase 3
-      logger.info(
-        { channel, address, notificationId: metadata.notificationId },
-        'dispatching notification (stub)',
-      );
-      return { success: true };
+      return sendInApp(address, subject, body, {
+        tenantId: metadata.tenantId,
+        notificationId: metadata.notificationId,
+        eventType: metadata.eventType ?? 'unknown',
+      });
   }
 }

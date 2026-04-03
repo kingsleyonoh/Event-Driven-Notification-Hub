@@ -8,6 +8,9 @@ vi.mock('./email.js', () => ({
 vi.mock('./sms.js', () => ({
   sendSms: vi.fn().mockResolvedValue({ success: true }),
 }));
+vi.mock('./in-app.js', () => ({
+  sendInApp: vi.fn().mockResolvedValue({ success: true }),
+}));
 
 describe('dispatch (stub — no config)', () => {
   it('returns success for email channel without config (stub fallback)', async () => {
@@ -65,13 +68,19 @@ describe('dispatch (with config — routes to real handlers)', () => {
     );
   });
 
-  it('falls back to stub for in_app channel', async () => {
+  it('routes in_app to sendInApp handler', async () => {
+    const { sendInApp } = await import('./in-app.js');
+
     const result = await dispatch(
       'in_app', 'user-123', null, 'In-app msg',
-      { tenantId: 'test', notificationId: 'n-12' },
+      { tenantId: 'test', notificationId: 'n-12', eventType: 'order.completed' },
       { email: { apiKey: 're_test', from: 'noreply@test.com' } },
     );
 
     expect(result.success).toBe(true);
+    expect(sendInApp).toHaveBeenCalledWith(
+      'user-123', null, 'In-app msg',
+      { tenantId: 'test', notificationId: 'n-12', eventType: 'order.completed' },
+    );
   });
 });
