@@ -18,7 +18,7 @@ services:
           memory: 512M
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.notification-hub.rule=Host(`notification-hub.kingsleyonoh.com`)"
+      - "traefik.http.routers.notification-hub.rule=Host(`notify.kingsleyonoh.com`)"
       - "traefik.http.routers.notification-hub.tls.certresolver=letsencrypt"
       - "traefik.http.services.notification-hub.loadbalancer.server.port=3000"
     networks:
