@@ -152,9 +152,11 @@ export async function processNotification(
   }, config.dispatch);
 
   if (result.success) {
+    // For in_app, deliveredAt is set by WebSocket acknowledge — not on dispatch
+    const deliveredAt = rule.channel === 'in_app' ? undefined : new Date();
     await db
       .update(notifications)
-      .set({ status: 'sent', deliveredAt: new Date() })
+      .set({ status: 'sent', ...(deliveredAt ? { deliveredAt } : {}) })
       .where(eq(notifications.id, notif.id));
   } else {
     await db
