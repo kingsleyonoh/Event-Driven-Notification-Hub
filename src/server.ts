@@ -23,6 +23,8 @@ import { releaseHeldNotifications } from './processor/quiet-hours-release.js';
 import { checkStaleHeartbeats } from './heartbeat/checker.js';
 import { cleanupOldNotifications } from './processor/notification-cleanup.js';
 import { disconnectProducer } from './consumer/producer.js';
+import { checkConsumerLag } from './consumer/lag-monitor.js';
+import { checkEmailFailureRate } from './channels/email-monitor.js';
 
 export async function buildApp(overrides?: { config?: Config; db?: Database }) {
   const config = overrides?.config ?? loadConfig();
@@ -95,6 +97,16 @@ async function start() {
       fn: () => cleanupOldNotifications(db, config.NOTIFICATION_RETENTION_DAYS).then(() => {}),
       intervalMs: 86400_000, // daily
     },
+    {
+      name: 'consumer-lag-check',
+      fn: () => checkConsumerLag(config.KAFKA_BROKERS, config.KAFKA_GROUP_ID).then(() => {}),
+      intervalMs: 60_000, // every 60s
+    },
+    {
+      name: 'email-failure-rate-check',
+      fn: async () => { checkEmailFailureRate(); },
+      intervalMs: 60_000, // every 60s
+    },
   ]);
 
   // Graceful shutdown
@@ -119,4 +131,8 @@ async function start() {
   }
 }
 
-start();
+// Only start when run directly (not when imported in tests)
+const isMainModule = process.argv[1]?.endsWith('server.js') || process.argv[1]?.endsWith('server.ts');
+if (isMainModule) {
+  start();
+}
