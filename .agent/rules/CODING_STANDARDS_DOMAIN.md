@@ -1,6 +1,6 @@
 # Event-Driven Notification Hub — Coding Standards: Domain & Production
 
-> Part 3 of 3. Also loaded: `CODING_STANDARDS.md`, `CODING_STANDARDS_TESTING.md`
+> Part 3 of 4. Also loaded: `CODING_STANDARDS.md`, `CODING_STANDARDS_TESTING.md`, `CODING_STANDARDS_TESTING_LIVE.md`
 
 ## Architecture: Module Dependency Hierarchy (PRD Section 9)
 ```
@@ -162,3 +162,8 @@ Multi-step flows (wizards, forms, onboarding) must use ONE state management appr
 
 ### Modularity Awareness
 Before adding code to any file, assess its current structure. Files should have a single clear responsibility. When a file's scope grows to cover multiple concerns, split by responsibility into separate modules — don't wait for a modularity audit. The project's limits (250 lines/file, 40 lines/function, 180 lines/class from `/check-modularity`) are guardrails, not targets.
+
+## PowerShell Environment
+- Use `;` to chain commands, **NEVER** `&&`
+- Special characters that break PowerShell: `|`, `>`, `<`, `$`, `()`, `{}`
+- Write scripts to files instead of inline commands for complex operations.

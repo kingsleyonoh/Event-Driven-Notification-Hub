@@ -1,7 +1,7 @@
 # Event-Driven Notification Hub — Codebase Context
 
-> Last updated: 2026-03-31
-> Template synced: 2026-03-31
+> Last updated: 2026-04-06
+> Template synced: 2026-04-06
 
 ## Tech Stack
 
@@ -32,15 +32,20 @@ notification-hub/
 │   ├── consumer/
 │   │   ├── kafka.ts                 # Kafka consumer setup
 │   │   ├── producer.ts             # Shared KafkaJS producer (events API + heartbeat checker)
-│   │   └── router.ts               # Event → rule matching
+│   │   ├── router.ts               # Event → rule matching
+│   │   └── lag-monitor.ts          # Consumer lag alerting
 │   ├── processor/
 │   │   ├── pipeline.ts              # Preference checks, dedup, digest routing
 │   │   ├── deduplicator.ts
-│   │   └── preferences.ts          # User preference evaluation
+│   │   ├── preferences.ts          # User preference evaluation
+│   │   ├── quiet-hours-release.ts   # Release held notifications when quiet hours end
+│   │   └── notification-cleanup.ts  # Delete old notifications (retention policy)
 │   ├── channels/
 │   │   ├── email.ts                 # Resend integration
+│   │   ├── email-monitor.ts         # Email failure rate sliding window
 │   │   ├── sms.ts                   # SMS stub
-│   │   └── in-app.ts               # WebSocket push
+│   │   ├── in-app.ts               # WebSocket push
+│   │   └── dispatcher.ts           # Channel routing (email/sms/in_app)
 │   ├── templates/
 │   │   └── renderer.ts             # Handlebars rendering
 │   ├── digest/
@@ -48,12 +53,17 @@ notification-hub/
 │   ├── heartbeat/
 │   │   ├── checker.ts              # Background job: find stale → publish events
 │   │   └── routes.ts               # Register, pulse, list, delete heartbeats
+│   ├── jobs/
+│   │   └── scheduler.ts              # Generic background job scheduler
 │   ├── api/
 │   │   ├── rules.routes.ts
 │   │   ├── templates.routes.ts
 │   │   ├── preferences.routes.ts
 │   │   ├── notifications.routes.ts
+│   │   ├── admin.routes.ts           # Admin tenant CRUD (X-Admin-Key)
+│   │   ├── events.routes.ts          # Test event publisher
 │   │   ├── health.routes.ts
+│   │   ├── schemas.ts                # Zod validation schemas
 │   │   └── middleware/
 │   ├── ws/
 │   │   └── handler.ts              # WebSocket connection manager
@@ -87,6 +97,8 @@ notification-hub/
 | Heartbeat | Liveness monitoring + stale detection | `src/heartbeat/checker.ts`, `routes.ts` |
 | API | REST endpoints for rules, templates, preferences, notifications | `src/api/*.routes.ts` |
 | WebSocket | Real-time push notifications to connected clients | `src/ws/handler.ts` |
+| Jobs | Background job scheduler (digest, quiet hours, heartbeat, cleanup, monitoring) | `src/jobs/scheduler.ts` |
+| Monitoring | Consumer lag + email failure rate alerting | `src/consumer/lag-monitor.ts`, `src/channels/email-monitor.ts` |
 | DB | Drizzle ORM schema, migrations, client | `src/db/schema.ts`, `client.ts` |
 
 ## Database Schema
@@ -185,7 +197,9 @@ notification-hub/
 | Validation schemas | `src/api/schemas.ts` | Zod v4 schemas for all API endpoints |
 | Health routes | `src/api/health.routes.ts` | Health check with PG, Kafka, Resend status |
 | Test setup | `src/test/setup.ts` | Shared test DB connection (db + sql) |
-| Test factories | `src/test/factories.ts` | createTestTenant, createTestTemplate, createTestRule, cleanupTestData |
+| Test factories | `src/test/factories.ts` | createTestTenant, createTestTemplate, createTestRule, createTestPreferences, createTestNotification, cleanupTestData |
+| Channel dispatcher | `src/channels/dispatcher.ts` | Routes channel → handler (email, sms, in_app) with DispatchConfig |
+| Job scheduler | `src/jobs/scheduler.ts` | Generic interval-based background job runner with start/stop |
 
 ## Deep References
 
@@ -197,6 +211,8 @@ notification-hub/
 | Template rendering | `src/templates/` |
 | Digest engine | `src/digest/` |
 | Heartbeat monitoring | `src/heartbeat/` |
+| Background jobs | `src/jobs/` |
+| Monitoring (lag + email) | `src/consumer/lag-monitor.ts`, `src/channels/email-monitor.ts` |
 | REST API routes | `src/api/` |
 | WebSocket | `src/ws/` |
 | Database | `src/db/` |

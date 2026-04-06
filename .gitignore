@@ -35,12 +35,18 @@ logs/
 # AI Workflow System (proprietary — do not publish)
 .agent/workflows/
 .agent/guides/
+.agent/agents/
+.agent/.last-sync
 
 # Internal project planning
 docs/progress.md
+docs/build-journal.md
 docs/architect_journal.md
 docs/*PRD*.md
 docs/*prd*.md
+
+# YOLO Mode workspace (runtime state, not committed)
+.yolo/
 
 # Multi-agent platform context (auto-generated, not committed)
 CLAUDE.md

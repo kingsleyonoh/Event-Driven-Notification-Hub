@@ -1,6 +1,6 @@
 # Event-Driven Notification Hub — Coding Standards
 
-> Part 1 of 3. Also loaded: `CODING_STANDARDS_TESTING.md`, `CODING_STANDARDS_DOMAIN.md`
+> Part 1 of 4. Also loaded: `CODING_STANDARDS_TESTING.md`, `CODING_STANDARDS_TESTING_LIVE.md`, `CODING_STANDARDS_DOMAIN.md`
 
 These rules are ALWAYS ACTIVE. Follow them on every response without being asked.
 
@@ -160,6 +160,11 @@ chore(workflows): add sprint velocity to resume workflow
 - If a similar function exists, **extend it** — don't create a parallel version.
 - When in doubt, **ASK the user**: "I can't find X — does it exist, or should I create it?"
 
+### Respect .gitignore (CRITICAL — Prevents Accidental Exposure)
+- **NEVER use `git add -f`** on any file. If a file isn't staged after `git add .`, it's correctly gitignored.
+- Files that are gitignored and must NEVER be committed: `docs/progress.md`, `docs/build-journal.md`, `.agent/workflows/`, `.agent/guides/`, `CLAUDE.md`, `.claude/`, `AGENTS.md`, `.cursorrules`
+- If `git status` shows these as untracked, that is CORRECT — do not try to add them.
+
 ### Use Skills When Available (Skills > Pre-trained Knowledge)
 - Before implementing any task, scan your available skills list for domain matches.
 - If a matching skill exists (e.g., database → `postgresql`, auth → `auth-implementation-patterns`, payments → `stripe-integration`), read its `SKILL.md` and follow its instructions.
@@ -172,8 +177,4 @@ chore(workflows): add sprint velocity to resume workflow
 - **Max 50 lines** per function/method.
 - **Max 200 lines** per class.
 
-## PowerShell Environment
-- Use `;` to chain commands, **NEVER** `&&`
-- Special characters that break PowerShell: `|`, `>`, `<`, `$`, `()`, `{}`
-- Write scripts to files instead of inline commands for complex operations.
 
