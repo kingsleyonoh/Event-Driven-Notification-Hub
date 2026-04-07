@@ -1,22 +1,33 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { eq, and } from 'drizzle-orm';
 import Fastify from 'fastify';
 import { db, sql } from '../test/setup.js';
 import { createTestTenant, createTestPreferences, cleanupTestData } from '../test/factories.js';
 import { errorHandlerPlugin } from './middleware/error-handler.js';
 import { authPlugin } from './middleware/auth.js';
 import { preferencesRoutes } from './preferences.routes.js';
+import { userPreferences } from '../db/schema.js';
 
 let tenant: Awaited<ReturnType<typeof createTestTenant>>;
 let tenantB: Awaited<ReturnType<typeof createTestTenant>>;
+let tenantWithTelegram: Awaited<ReturnType<typeof createTestTenant>>;
 
 beforeAll(async () => {
   tenant = await createTestTenant(db);
   tenantB = await createTestTenant(db);
+  tenantWithTelegram = await createTestTenant(db, {
+    config: {
+      channels: {
+        telegram: { botToken: 'bot123:TEST', botUsername: 'test_notif_bot' },
+      },
+    },
+  });
 });
 
 afterAll(async () => {
   await cleanupTestData(db, tenant.id);
   await cleanupTestData(db, tenantB.id);
+  await cleanupTestData(db, tenantWithTelegram.id);
   await sql.end();
 });
 
@@ -190,5 +201,52 @@ describe('Preferences API — GET /api/preferences/:userId', () => {
     });
 
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('Preferences API — POST /api/preferences/:userId/telegram/link', () => {
+  it('generates token, stores it, and returns link URL with bot username', async () => {
+    const app = await buildTestApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/preferences/tg-link-user/telegram/link',
+      headers: { 'x-api-key': tenantWithTelegram.apiKey },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.url).toMatch(/^https:\/\/t\.me\/test_notif_bot\?start=.+/);
+    expect(body.token).toBeDefined();
+    expect(typeof body.token).toBe('string');
+    expect(body.token.length).toBeGreaterThan(0);
+
+    // Verify token was stored in DB
+    const [prefs] = await db
+      .select()
+      .from(userPreferences)
+      .where(
+        and(
+          eq(userPreferences.tenantId, tenantWithTelegram.id),
+          eq(userPreferences.userId, 'tg-link-user'),
+        ),
+      );
+    expect(prefs).toBeDefined();
+    expect(prefs.telegramLinkToken).toBe(body.token);
+  });
+
+  it('returns error when tenant has no telegram config', async () => {
+    const app = await buildTestApp();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/preferences/tg-link-user-2/telegram/link',
+      headers: headers(), // tenant without telegram config
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = res.json();
+    expect(body.error.code).toBe('VALIDATION_ERROR');
+    expect(body.error.message).toContain('telegram');
   });
 });

@@ -1,6 +1,7 @@
 import { sendEmail, type EmailConfig } from './email.js';
 import { sendSms } from './sms.js';
 import { sendInApp } from './in-app.js';
+import { sendTelegram, type TelegramConfig } from './telegram.js';
 import { resolveTenantChannelConfig } from '../lib/channel-config.js';
 import { createLogger } from '../lib/logger.js';
 
@@ -47,14 +48,28 @@ export async function dispatch(
         eventType: metadata.eventType ?? 'unknown',
       });
 
-    case 'telegram':
-      // Telegram handler will be implemented in a later batch
-      logger.info(
-        { channel, address, notificationId: metadata.notificationId },
-        'telegram dispatch (stub — handler not yet implemented)',
+    case 'telegram': {
+      const telegramConfig = resolveTelegramConfig(config);
+      if (telegramConfig) {
+        return sendTelegram(address, subject, body, telegramConfig);
+      }
+      logger.warn(
+        { channel, notificationId: metadata.notificationId },
+        'no telegram config — skipping',
       );
-      return { success: true };
+      return { success: false, error: 'no telegram config for tenant' };
+    }
   }
+}
+
+function resolveTelegramConfig(config?: DispatchConfig): TelegramConfig | null {
+  if (config?.tenantConfig) {
+    const tenantTelegram = resolveTenantChannelConfig(config.tenantConfig, 'telegram');
+    if (tenantTelegram) {
+      return tenantTelegram as unknown as TelegramConfig;
+    }
+  }
+  return null;
 }
 
 function resolveEmailConfig(config?: DispatchConfig): EmailConfig | null {

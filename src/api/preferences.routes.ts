@@ -1,7 +1,9 @@
+import crypto from 'node:crypto';
 import fp from 'fastify-plugin';
 import { eq, and } from 'drizzle-orm';
 import { userPreferences } from '../db/schema.js';
 import { upsertPreferencesSchema } from './schemas.js';
+import { resolveTenantChannelConfig } from '../lib/channel-config.js';
 import { ValidationError, NotFoundError } from '../lib/errors.js';
 import type { Database } from '../db/client.js';
 
@@ -75,4 +77,35 @@ export const preferencesRoutes = fp<PreferencesRoutesOptions>(async (app, opts) 
 
     return { preferences: prefs };
   });
+
+  // POST /api/preferences/:userId/telegram/link
+  app.post<{ Params: { userId: string } }>(
+    '/api/preferences/:userId/telegram/link',
+    async (request) => {
+      const tenantConfig = request.tenant.config;
+      const telegramConfig = resolveTenantChannelConfig(tenantConfig, 'telegram');
+
+      if (!telegramConfig?.botUsername) {
+        throw new ValidationError('Tenant has no telegram bot configured');
+      }
+
+      const token = crypto.randomUUID();
+      const userId = request.params.userId;
+
+      await db
+        .insert(userPreferences)
+        .values({
+          tenantId: request.tenantId,
+          userId,
+          telegramLinkToken: token,
+        })
+        .onConflictDoUpdate({
+          target: [userPreferences.tenantId, userPreferences.userId],
+          set: { telegramLinkToken: token, updatedAt: new Date() },
+        });
+
+      const url = `https://t.me/${telegramConfig.botUsername}?start=${token}`;
+      return { url, token };
+    },
+  );
 });

@@ -11,6 +11,9 @@ vi.mock('./sms.js', () => ({
 vi.mock('./in-app.js', () => ({
   sendInApp: vi.fn().mockResolvedValue({ success: true }),
 }));
+vi.mock('./telegram.js', () => ({
+  sendTelegram: vi.fn().mockResolvedValue({ success: true }),
+}));
 
 describe('dispatch (stub — no config)', () => {
   it('returns success for email channel without config (stub fallback)', async () => {
@@ -172,5 +175,43 @@ describe('dispatch (with tenantConfig — per-tenant channel credentials)', () =
     expect(result.success).toBe(true);
     // sendEmail should NOT be called — falls through to stub
     expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('routes telegram to sendTelegram when tenant config has telegram credentials', async () => {
+    const { sendTelegram } = await import('./telegram.js');
+    vi.mocked(sendTelegram).mockClear();
+
+    const result = await dispatch(
+      'telegram', '12345678', 'Alert', 'Server down',
+      { tenantId: 'test', notificationId: 'n-30' },
+      {
+        tenantConfig: {
+          channels: {
+            telegram: { botToken: 'bot123:ABC', botUsername: 'mybot' },
+          },
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(sendTelegram).toHaveBeenCalledWith(
+      '12345678', 'Alert', 'Server down',
+      { botToken: 'bot123:ABC', botUsername: 'mybot' },
+    );
+  });
+
+  it('returns failure when tenant config lacks telegram credentials', async () => {
+    const { sendTelegram } = await import('./telegram.js');
+    vi.mocked(sendTelegram).mockClear();
+
+    const result = await dispatch(
+      'telegram', '12345678', 'Alert', 'body',
+      { tenantId: 'test', notificationId: 'n-31' },
+      { tenantConfig: { channels: {} } },
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('no telegram config');
+    expect(sendTelegram).not.toHaveBeenCalled();
   });
 });

@@ -104,4 +104,10 @@ describe('resolveDeliveryAddress', () => {
     const result = await resolveDeliveryAddress(db, tenant.id, 'user-addr-4', 'email');
     expect(result.address).toBeNull();
   });
+
+  it('returns telegramChatId from preferences for telegram channel', async () => {
+    await createTestPreferences(db, tenant.id, 'user-addr-tg', { telegramChatId: '99887766' });
+    const result = await resolveDeliveryAddress(db, tenant.id, 'user-addr-tg', 'telegram');
+    expect(result.address).toBe('99887766');
+  });
 });
