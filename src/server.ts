@@ -26,6 +26,8 @@ import { disconnectProducer } from './consumer/producer.js';
 import { checkConsumerLag } from './consumer/lag-monitor.js';
 import { checkEmailFailureRate } from './channels/email-monitor.js';
 import { createTelegramBotWorker } from './channels/telegram-bot.js';
+import { createConsumer } from './consumer/kafka.js';
+import { processNotification } from './processor/pipeline.js';
 
 export async function buildApp(overrides?: { config?: Config; db?: Database }) {
   const config = overrides?.config ?? loadConfig();
@@ -126,6 +128,7 @@ async function start() {
   const shutdown = async (signal: string) => {
     app.log.info({ signal }, 'shutting down');
     scheduler.stop();
+    if (consumer) await consumer.disconnect();
     await app.close();
     await disconnectProducer();
     if (sql) await sql.end();
@@ -134,6 +137,32 @@ async function start() {
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
+
+  // Kafka consumer — processes events into notifications
+  let consumer;
+  try {
+    consumer = await createConsumer(
+      { brokers: config.KAFKA_BROKERS, groupId: config.KAFKA_GROUP_ID, topics: config.KAFKA_TOPICS },
+      db,
+      async (event, rules, recipients, tenant) => {
+        const pipelineConfig = {
+          dedupWindowMinutes: config.DEDUP_WINDOW_MINUTES,
+          digestSchedule: config.DIGEST_SCHEDULE,
+          dispatch: { ...dispatchConfig, tenantConfig: tenant.config as Record<string, unknown> | null },
+          tenantConfig: tenant.config as Record<string, unknown> | null,
+        };
+        for (const rule of rules) {
+          const recipient = recipients.get(rule.id);
+          if (recipient) {
+            await processNotification(db, event, rule, recipient, pipelineConfig);
+          }
+        }
+      },
+    );
+    app.log.info('Kafka consumer started');
+  } catch (err) {
+    app.log.error({ err }, 'Failed to start Kafka consumer — events will not be processed');
+  }
 
   try {
     await app.listen({ port: config.PORT, host: config.HOST });
