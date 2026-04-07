@@ -13,8 +13,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx src/scripts/seed.ts",
     "topics:create": "tsx src/scripts/create-topics.ts",
-    "setup:personal": "tsx src/scripts/setup-personal.ts",
-    "setup:client-portal": "tsx src/scripts/setup-client-portal.ts"
+    "setup:personal": "tsx src/scripts/setup-personal.ts"
   },
   "description": "Event-driven notification hub that consumes Kafka events and routes notifications across email, SMS, in-app, and digest channels.",
   "license": "ISC",
