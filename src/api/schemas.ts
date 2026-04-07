@@ -10,6 +10,25 @@ export const notificationStatusEnum = z.enum([
   'pending', 'sent', 'failed', 'queued_digest', 'skipped', 'held',
 ]);
 
+// ─── Tenant Channel Config ──────────────────────────────────────────
+
+export const emailChannelConfigSchema = z.object({
+  apiKey: z.string().min(1),
+  from: z.string().min(1),
+});
+
+export const telegramChannelConfigSchema = z.object({
+  botToken: z.string().min(1),
+  botUsername: z.string().min(1),
+});
+
+export const tenantChannelConfigSchema = z.object({
+  channels: z.object({
+    email: emailChannelConfigSchema.optional(),
+    telegram: telegramChannelConfigSchema.optional(),
+  }).optional(),
+});
+
 // ─── Rules ───────────────────────────────────────────────────────────
 
 export const createRuleSchema = z.object({

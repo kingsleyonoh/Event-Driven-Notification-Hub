@@ -1,6 +1,7 @@
 import { sendEmail, type EmailConfig } from './email.js';
 import { sendSms } from './sms.js';
 import { sendInApp } from './in-app.js';
+import { resolveTenantChannelConfig } from '../lib/channel-config.js';
 import { createLogger } from '../lib/logger.js';
 
 const logger = createLogger('dispatcher');
@@ -12,6 +13,7 @@ export interface DispatchResult {
 
 export interface DispatchConfig {
   email?: EmailConfig;
+  tenantConfig?: Record<string, unknown> | null;
 }
 
 export async function dispatch(
@@ -23,15 +25,17 @@ export async function dispatch(
   config?: DispatchConfig,
 ): Promise<DispatchResult> {
   switch (channel) {
-    case 'email':
-      if (config?.email) {
-        return sendEmail(address, subject, body, config.email);
+    case 'email': {
+      const emailConfig = resolveEmailConfig(config);
+      if (emailConfig) {
+        return sendEmail(address, subject, body, emailConfig);
       }
       logger.info(
         { channel, address, subject, notificationId: metadata.notificationId },
         'dispatching notification (stub)',
       );
       return { success: true };
+    }
 
     case 'sms':
       return sendSms(address, body, metadata);
@@ -43,4 +47,21 @@ export async function dispatch(
         eventType: metadata.eventType ?? 'unknown',
       });
   }
+}
+
+function resolveEmailConfig(config?: DispatchConfig): EmailConfig | null {
+  // 1. Try tenant-level config first
+  if (config?.tenantConfig) {
+    const tenantEmail = resolveTenantChannelConfig(config.tenantConfig, 'email');
+    if (tenantEmail) {
+      return tenantEmail as unknown as EmailConfig;
+    }
+  }
+
+  // 2. Fall back to explicit email config (env-level)
+  if (config?.email) {
+    return config.email;
+  }
+
+  return null;
 }

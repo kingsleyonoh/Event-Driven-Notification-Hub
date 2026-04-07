@@ -84,3 +84,93 @@ describe('dispatch (with config — routes to real handlers)', () => {
     );
   });
 });
+
+describe('dispatch (with tenantConfig — per-tenant channel credentials)', () => {
+  it('uses tenant-level email config when tenantConfig has email channel', async () => {
+    const { sendEmail } = await import('./email.js');
+    vi.mocked(sendEmail).mockClear();
+
+    const result = await dispatch(
+      'email', 'user@example.com', 'Subject', 'Body',
+      { tenantId: 'test', notificationId: 'n-20' },
+      {
+        tenantConfig: {
+          channels: {
+            email: { apiKey: 're_tenant_key', from: 'sender@tenant.com' },
+          },
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(sendEmail).toHaveBeenCalledWith(
+      'user@example.com', 'Subject', 'Body',
+      { apiKey: 're_tenant_key', from: 'sender@tenant.com' },
+    );
+  });
+
+  it('prefers tenant config over env-level email config', async () => {
+    const { sendEmail } = await import('./email.js');
+    vi.mocked(sendEmail).mockClear();
+
+    const result = await dispatch(
+      'email', 'user@example.com', 'Subject', 'Body',
+      { tenantId: 'test', notificationId: 'n-21' },
+      {
+        email: { apiKey: 're_env_key', from: 'env@test.com' },
+        tenantConfig: {
+          channels: {
+            email: { apiKey: 're_tenant_key', from: 'tenant@test.com' },
+          },
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(sendEmail).toHaveBeenCalledWith(
+      'user@example.com', 'Subject', 'Body',
+      { apiKey: 're_tenant_key', from: 'tenant@test.com' },
+    );
+  });
+
+  it('falls back to env-level email config when tenant config lacks email', async () => {
+    const { sendEmail } = await import('./email.js');
+    vi.mocked(sendEmail).mockClear();
+
+    const result = await dispatch(
+      'email', 'user@example.com', 'Subject', 'Body',
+      { tenantId: 'test', notificationId: 'n-22' },
+      {
+        email: { apiKey: 're_env_key', from: 'env@test.com' },
+        tenantConfig: { channels: {} },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(sendEmail).toHaveBeenCalledWith(
+      'user@example.com', 'Subject', 'Body',
+      { apiKey: 're_env_key', from: 'env@test.com' },
+    );
+  });
+
+  it('falls back to stub when tenant config has malformed email', async () => {
+    const { sendEmail } = await import('./email.js');
+    vi.mocked(sendEmail).mockClear();
+
+    const result = await dispatch(
+      'email', 'user@example.com', 'Subject', 'Body',
+      { tenantId: 'test', notificationId: 'n-23' },
+      {
+        tenantConfig: {
+          channels: {
+            email: { apiKey: 're_key' }, // missing 'from'
+          },
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    // sendEmail should NOT be called — falls through to stub
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+});

@@ -48,7 +48,7 @@ export async function buildApp(overrides?: { config?: Config; db?: Database }) {
   await app.register(healthRoutes, {
     db,
     kafkaBrokers: config.KAFKA_BROKERS,
-    resendApiKey: config.RESEND_API_KEY,
+    resendApiKey: config.RESEND_API_KEY ?? '',
   });
   await app.register(rulesRoutes, { db });
   await app.register(templatesRoutes, { db });
@@ -70,7 +70,9 @@ export async function buildApp(overrides?: { config?: Config; db?: Database }) {
 async function start() {
   const { app, config, db, sql } = await buildApp();
 
-  const emailConfig = { apiKey: config.RESEND_API_KEY, from: config.RESEND_FROM };
+  const emailConfig = config.RESEND_API_KEY && config.RESEND_FROM
+    ? { apiKey: config.RESEND_API_KEY, from: config.RESEND_FROM }
+    : undefined;
   const dispatchConfig = { email: emailConfig };
 
   // Background jobs
@@ -79,7 +81,9 @@ async function start() {
   const scheduler = createJobScheduler([
     {
       name: 'digest-sender',
-      fn: () => processDigestQueue(db, emailConfig).then(() => {}),
+      fn: () => emailConfig
+        ? processDigestQueue(db, emailConfig).then(() => {})
+        : Promise.resolve(),
       intervalMs: digestIntervalMs,
     },
     {

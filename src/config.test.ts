@@ -58,8 +58,6 @@ describe('loadConfig', () => {
   it('applies default values when optional vars are omitted', () => {
     process.env.DATABASE_URL = 'postgresql://localhost/test';
     process.env.KAFKA_BROKERS = 'localhost:19092';
-    process.env.RESEND_API_KEY = 're_key';
-    process.env.RESEND_FROM = 'test@example.com';
     process.env.API_KEYS = 'key-1';
     process.env.ADMIN_API_KEY = 'admin-key';
 
@@ -76,6 +74,8 @@ describe('loadConfig', () => {
     expect(config.DIGEST_SCHEDULE).toBe('daily');
     expect(config.QUIET_HOURS_CHECK_INTERVAL_MS).toBe(900000);
     expect(config.NOTIFICATION_RETENTION_DAYS).toBe(90);
+    expect(config.RESEND_API_KEY).toBeUndefined();
+    expect(config.RESEND_FROM).toBeUndefined();
   });
 
   it('throws when DATABASE_URL is missing', () => {
@@ -98,24 +98,26 @@ describe('loadConfig', () => {
     expect(() => loadConfig()).toThrow();
   });
 
-  it('throws when RESEND_API_KEY is missing', () => {
+  it('accepts missing RESEND_API_KEY as optional (per-tenant config fallback)', () => {
     process.env.DATABASE_URL = 'postgresql://localhost/test';
     process.env.KAFKA_BROKERS = 'localhost:19092';
     process.env.RESEND_FROM = 'test@example.com';
     process.env.API_KEYS = 'key-1';
     process.env.ADMIN_API_KEY = 'admin-key';
 
-    expect(() => loadConfig()).toThrow();
+    const config = loadConfig();
+    expect(config.RESEND_API_KEY).toBeUndefined();
   });
 
-  it('throws when RESEND_FROM is missing', () => {
+  it('accepts missing RESEND_FROM as optional (per-tenant config fallback)', () => {
     process.env.DATABASE_URL = 'postgresql://localhost/test';
     process.env.KAFKA_BROKERS = 'localhost:19092';
     process.env.RESEND_API_KEY = 're_key';
     process.env.API_KEYS = 'key-1';
     process.env.ADMIN_API_KEY = 'admin-key';
 
-    expect(() => loadConfig()).toThrow();
+    const config = loadConfig();
+    expect(config.RESEND_FROM).toBeUndefined();
   });
 
   it('throws when API_KEYS is missing', () => {

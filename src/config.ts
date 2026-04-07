@@ -12,8 +12,8 @@ const configSchema = z.object({
   KAFKA_GROUP_ID: z.string().default('notification-hub'),
   KAFKA_TOPICS: z.string().default('events.*'),
 
-  RESEND_API_KEY: z.string().min(1),
-  RESEND_FROM: z.string().min(1),
+  RESEND_API_KEY: z.string().min(1).optional(),
+  RESEND_FROM: z.string().min(1).optional(),
 
   API_KEYS: z.string().min(1).transform((val) => val.split(',').map((k) => k.trim())),
   ADMIN_API_KEY: z.string().min(1),
