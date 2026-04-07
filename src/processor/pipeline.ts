@@ -48,8 +48,11 @@ export async function processNotification(
   if (rule.recipientType === 'static') {
     // Static recipients ARE the delivery address — no DB lookup needed
     deliveryAddress = recipient;
+  } else if (isDirectAddress(recipient, rule.channel)) {
+    // event_field extracted a direct address (email with @, phone with +) — use as-is
+    deliveryAddress = recipient;
   } else {
-    // event_field recipients are user IDs — look up delivery address from preferences
+    // event_field extracted a user ID — look up delivery address from preferences
     const result = await resolveDeliveryAddress(db, tenantId, recipient, rule.channel);
     preferences = result.preferences;
 
@@ -169,6 +172,13 @@ export async function processNotification(
       .set({ status: 'failed', errorMessage: result.error ?? 'dispatch failed' })
       .where(eq(notifications.id, notif.id));
   }
+}
+
+function isDirectAddress(value: string, channel: string): boolean {
+  if (channel === 'email') return value.includes('@');
+  if (channel === 'sms') return /^\+?\d{7,}$/.test(value);
+  if (channel === 'telegram') return /^\d{5,}$/.test(value);
+  return false;
 }
 
 async function insertNotification(
