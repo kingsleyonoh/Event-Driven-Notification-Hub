@@ -1,0 +1,81 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: shared-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: klevar-shared-pg-2026
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    networks:
+      - shared-internal
+      - traefik-public
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+
+  redis:
+    image: redis:7-alpine
+    container_name: shared-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 32mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - shared-internal
+      - traefik-public
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 48M
+
+  redpanda:
+    image: redpandadata/redpanda:latest
+    container_name: shared-redpanda
+    restart: unless-stopped
+    command:
+      - redpanda
+      - start
+      - --smp 1
+      - --memory 64M
+      - --overprovisioned
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://shared-redpanda:9092,external://shared-redpanda:19092
+      - --mode dev-container
+    volumes:
+      - redpanda_data:/var/redpanda/data
+    networks:
+      - shared-internal
+      - traefik-public
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 96M
+
+volumes:
+  pg_data:
+  redis_data:
+  redpanda_data:
+
+networks:
+  shared-internal:
+    driver: bridge
+  traefik-public:
+    external: true

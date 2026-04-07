@@ -8,9 +8,11 @@ const configSchema = z.object({
 
   DATABASE_URL: z.string().min(1),
 
-  KAFKA_BROKERS: z.string().min(1).transform((val) => val.split(',').map((b) => b.trim())),
+  USE_KAFKA: z.enum(['true', 'false']).default('true').transform((val) => val === 'true'),
+
+  KAFKA_BROKERS: z.string().optional().transform((val) => val ? val.split(',').map((b) => b.trim()) : []),
   KAFKA_GROUP_ID: z.string().default('notification-hub'),
-  KAFKA_TOPICS: z.string().default('events.*'),
+  KAFKA_TOPICS: z.string().default('events.notifications'),
 
   RESEND_API_KEY: z.string().min(1).optional(),
   RESEND_FROM: z.string().min(1).optional(),

@@ -6,9 +6,6 @@ import { errorHandlerPlugin } from './middleware/error-handler.js';
 import { rateLimiterPlugin } from './middleware/rate-limiter.js';
 import { authPlugin } from './middleware/auth.js';
 import { eventsRoutes } from './events.routes.js';
-import { disconnectProducer, resetKafkaClient } from '../consumer/producer.js';
-
-const KAFKA_BROKERS = ['localhost:19092'];
 
 let tenant: Awaited<ReturnType<typeof createTestTenant>>;
 
@@ -17,8 +14,6 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await disconnectProducer();
-  resetKafkaClient();
   await cleanupTestData(db, tenant.id);
   await sql.end();
 });
@@ -29,14 +24,19 @@ async function buildTestApp() {
   await app.register(rateLimiterPlugin);
   await app.register(authPlugin, { db });
   await app.register(eventsRoutes, {
-    kafkaBrokers: KAFKA_BROKERS,
-    kafkaTopics: 'events.notifications',
+    db,
+    useKafka: false,
+    pipelineConfig: {
+      dedupWindowMinutes: 60,
+      digestSchedule: 'daily' as const,
+      dispatch: {},
+    },
   });
   return app;
 }
 
 describe('POST /api/events', () => {
-  it('publishes a test event to Kafka', async () => {
+  it('processes a test event directly (no Kafka)', async () => {
     const app = await buildTestApp();
     const response = await app.inject({
       method: 'POST',
@@ -50,7 +50,9 @@ describe('POST /api/events', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ published: true });
+    const body = response.json();
+    expect(body.published).toBe(true);
+    expect(body.processed).toBeDefined();
   });
 
   it('rejects invalid event payload', async () => {

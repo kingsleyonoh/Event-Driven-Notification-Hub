@@ -43,7 +43,7 @@ describe('loadConfig', () => {
     expect(config.DATABASE_URL).toBe('postgresql://postgres:postgres@localhost:5432/notification_hub');
     expect(config.KAFKA_BROKERS).toEqual(['localhost:19092']);
     expect(config.KAFKA_GROUP_ID).toBe('notification-hub');
-    expect(config.KAFKA_TOPICS).toBe('events.*');
+    expect(config.KAFKA_TOPICS).toBe('events.*'); // explicit override from setValidEnv
     expect(config.RESEND_API_KEY).toBe('re_test_key');
     expect(config.RESEND_FROM).toBe('test@example.com');
     expect(config.API_KEYS).toEqual(['key-1', 'key-2']);
@@ -68,7 +68,8 @@ describe('loadConfig', () => {
     expect(config.NODE_ENV).toBe('development');
     expect(config.LOG_LEVEL).toBe('info');
     expect(config.KAFKA_GROUP_ID).toBe('notification-hub');
-    expect(config.KAFKA_TOPICS).toBe('events.*');
+    expect(config.KAFKA_TOPICS).toBe('events.notifications');
+    expect(config.USE_KAFKA).toBe(true);
     expect(config.DEFAULT_TENANT_ID).toBe('default');
     expect(config.DEDUP_WINDOW_MINUTES).toBe(60);
     expect(config.DIGEST_SCHEDULE).toBe('daily');
@@ -88,14 +89,13 @@ describe('loadConfig', () => {
     expect(() => loadConfig()).toThrow();
   });
 
-  it('throws when KAFKA_BROKERS is missing', () => {
+  it('accepts missing KAFKA_BROKERS as optional (direct processing mode)', () => {
     process.env.DATABASE_URL = 'postgresql://localhost/test';
-    process.env.RESEND_API_KEY = 're_key';
-    process.env.RESEND_FROM = 'test@example.com';
     process.env.API_KEYS = 'key-1';
     process.env.ADMIN_API_KEY = 'admin-key';
 
-    expect(() => loadConfig()).toThrow();
+    const config = loadConfig();
+    expect(config.KAFKA_BROKERS).toEqual([]);
   });
 
   it('accepts missing RESEND_API_KEY as optional (per-tenant config fallback)', () => {

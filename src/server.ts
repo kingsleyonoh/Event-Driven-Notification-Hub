@@ -55,9 +55,20 @@ export async function buildApp(overrides?: { config?: Config; db?: Database }) {
   });
   await app.register(rulesRoutes, { db });
   await app.register(templatesRoutes, { db });
+  const emailConfig = config.RESEND_API_KEY && config.RESEND_FROM
+    ? { apiKey: config.RESEND_API_KEY, from: config.RESEND_FROM }
+    : undefined;
+
   await app.register(eventsRoutes, {
+    db,
     kafkaBrokers: config.KAFKA_BROKERS,
-    kafkaTopics: 'events.notifications',
+    kafkaTopics: config.KAFKA_TOPICS,
+    useKafka: config.USE_KAFKA,
+    pipelineConfig: {
+      dedupWindowMinutes: config.DEDUP_WINDOW_MINUTES,
+      digestSchedule: config.DIGEST_SCHEDULE,
+      dispatch: { email: emailConfig },
+    },
   });
   await app.register(preferencesRoutes, { db });
   await app.register(notificationsRoutes, { db });
@@ -73,10 +84,11 @@ export async function buildApp(overrides?: { config?: Config; db?: Database }) {
 async function start() {
   const { app, config, db, sql } = await buildApp();
 
-  const emailConfig = config.RESEND_API_KEY && config.RESEND_FROM
-    ? { apiKey: config.RESEND_API_KEY, from: config.RESEND_FROM }
-    : undefined;
-  const dispatchConfig = { email: emailConfig };
+  const dispatchConfig = {
+    email: config.RESEND_API_KEY && config.RESEND_FROM
+      ? { apiKey: config.RESEND_API_KEY, from: config.RESEND_FROM }
+      : undefined,
+  };
 
   // Telegram bot polling worker
   const telegramBot = createTelegramBotWorker(db);
@@ -87,8 +99,8 @@ async function start() {
   const scheduler = createJobScheduler([
     {
       name: 'digest-sender',
-      fn: () => emailConfig
-        ? processDigestQueue(db, emailConfig).then(() => {})
+      fn: () => dispatchConfig.email
+        ? processDigestQueue(db, dispatchConfig.email).then(() => {})
         : Promise.resolve(),
       intervalMs: digestIntervalMs,
     },
@@ -97,21 +109,21 @@ async function start() {
       fn: () => releaseHeldNotifications(db, dispatchConfig).then(() => {}),
       intervalMs: config.QUIET_HOURS_CHECK_INTERVAL_MS,
     },
-    {
+    ...(config.USE_KAFKA ? [{
       name: 'heartbeat-checker',
       fn: () => checkStaleHeartbeats(db, config.KAFKA_BROKERS).then(() => {}),
       intervalMs: 900_000, // 15 minutes
-    },
+    }] : []),
     {
       name: 'notification-cleanup',
       fn: () => cleanupOldNotifications(db, config.NOTIFICATION_RETENTION_DAYS).then(() => {}),
       intervalMs: 86400_000, // daily
     },
-    {
+    ...(config.USE_KAFKA ? [{
       name: 'consumer-lag-check',
       fn: () => checkConsumerLag(config.KAFKA_BROKERS, config.KAFKA_GROUP_ID).then(() => {}),
       intervalMs: 60_000, // every 60s
-    },
+    }] : []),
     {
       name: 'email-failure-rate-check',
       fn: async () => { checkEmailFailureRate(); },
@@ -138,30 +150,34 @@ async function start() {
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
 
-  // Kafka consumer — processes events into notifications
-  let consumer;
-  try {
-    consumer = await createConsumer(
-      { brokers: config.KAFKA_BROKERS, groupId: config.KAFKA_GROUP_ID, topics: config.KAFKA_TOPICS },
-      db,
-      async (event, rules, recipients, tenant) => {
-        const pipelineConfig = {
-          dedupWindowMinutes: config.DEDUP_WINDOW_MINUTES,
-          digestSchedule: config.DIGEST_SCHEDULE,
-          dispatch: { ...dispatchConfig, tenantConfig: tenant.config as Record<string, unknown> | null },
-          tenantConfig: tenant.config as Record<string, unknown> | null,
-        };
-        for (const rule of rules) {
-          const recipient = recipients.get(rule.id);
-          if (recipient) {
-            await processNotification(db, event, rule, recipient, pipelineConfig);
+  // Kafka consumer — only start if USE_KAFKA=true
+  let consumer: { disconnect: () => Promise<void> } | undefined;
+  if (config.USE_KAFKA && config.KAFKA_BROKERS.length > 0) {
+    try {
+      consumer = await createConsumer(
+        { brokers: config.KAFKA_BROKERS, groupId: config.KAFKA_GROUP_ID, topics: config.KAFKA_TOPICS },
+        db,
+        async (event, rules, recipients, tenant) => {
+          const pipelineConfig = {
+            dedupWindowMinutes: config.DEDUP_WINDOW_MINUTES,
+            digestSchedule: config.DIGEST_SCHEDULE,
+            dispatch: { ...dispatchConfig, tenantConfig: tenant.config as Record<string, unknown> | null },
+            tenantConfig: tenant.config as Record<string, unknown> | null,
+          };
+          for (const rule of rules) {
+            const recipient = recipients.get(rule.id);
+            if (recipient) {
+              await processNotification(db, event, rule, recipient, pipelineConfig);
+            }
           }
-        }
-      },
-    );
-    app.log.info('Kafka consumer started');
-  } catch (err) {
-    app.log.error({ err }, 'Failed to start Kafka consumer — events will not be processed');
+        },
+      );
+      app.log.info('Kafka consumer started');
+    } catch (err) {
+      app.log.error({ err }, 'Failed to start Kafka consumer — events will not be processed');
+    }
+  } else {
+    app.log.info('Direct processing mode — events processed inline without Kafka');
   }
 
   try {
