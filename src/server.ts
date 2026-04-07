@@ -2,6 +2,7 @@ import { config as dotenvConfig } from 'dotenv';
 dotenvConfig({ path: '.env.local' });
 
 import Fastify from 'fastify';
+import helmet from '@fastify/helmet';
 import { loadConfig, type Config } from './config.js';
 import { createDb, type Database } from './db/client.js';
 import { errorHandlerPlugin } from './api/middleware/error-handler.js';
@@ -39,6 +40,11 @@ export async function buildApp(overrides?: { config?: Config; db?: Database }) {
     logger: {
       level: config.LOG_LEVEL,
     },
+  });
+
+  // Security headers
+  await app.register(helmet, {
+    contentSecurityPolicy: false, // API-only, no HTML to protect
   });
 
   // Middleware — registration order matters

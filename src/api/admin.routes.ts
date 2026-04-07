@@ -53,7 +53,9 @@ export const adminRoutes = fp<AdminRoutesOptions>(async (app, opts) => {
   const { db } = opts;
 
   // POST /api/admin/tenants
-  app.post('/api/admin/tenants', async (request, reply) => {
+  app.post('/api/admin/tenants', {
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const parsed = createTenantSchema.safeParse(request.body);
     if (!parsed.success) {
       throw new ValidationError('Invalid tenant data', parsed.error.issues.map((i) => i.message));
@@ -75,13 +77,17 @@ export const adminRoutes = fp<AdminRoutesOptions>(async (app, opts) => {
   });
 
   // GET /api/admin/tenants
-  app.get('/api/admin/tenants', async () => {
+  app.get('/api/admin/tenants', {
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+  }, async () => {
     const rows = await db.select().from(tenants);
     return { tenants: rows.map((r) => sanitizeTenant(r as unknown as Record<string, unknown>)) };
   });
 
   // GET /api/admin/tenants/:id
-  app.get<{ Params: { id: string } }>('/api/admin/tenants/:id', async (request) => {
+  app.get<{ Params: { id: string } }>('/api/admin/tenants/:id', {
+    config: { rateLimit: { max: 20, timeWindow: '1 minute' } },
+  }, async (request) => {
     const [tenant] = await db
       .select()
       .from(tenants)
@@ -95,7 +101,9 @@ export const adminRoutes = fp<AdminRoutesOptions>(async (app, opts) => {
   });
 
   // PUT /api/admin/tenants/:id
-  app.put<{ Params: { id: string } }>('/api/admin/tenants/:id', async (request) => {
+  app.put<{ Params: { id: string } }>('/api/admin/tenants/:id', {
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (request) => {
     const parsed = updateTenantSchema.safeParse(request.body);
     if (!parsed.success) {
       throw new ValidationError('Invalid tenant data', parsed.error.issues.map((i) => i.message));
@@ -121,7 +129,9 @@ export const adminRoutes = fp<AdminRoutesOptions>(async (app, opts) => {
   });
 
   // DELETE /api/admin/tenants/:id
-  app.delete<{ Params: { id: string } }>('/api/admin/tenants/:id', async (request, reply) => {
+  app.delete<{ Params: { id: string } }>('/api/admin/tenants/:id', {
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const [tenant] = await db
       .delete(tenants)
       .where(eq(tenants.id, request.params.id))
