@@ -1,82 +1,24 @@
 services:
   app:
-    build: .
+    image: ghcr.io/kingsleyonoh/notification-hub:latest
     container_name: notification-hub
     restart: unless-stopped
-    ports:
-      - "3000:3000"
     env_file: .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redpanda:
-        condition: service_healthy
     deploy:
       resources:
         limits:
-          cpus: "1.0"
-          memory: 512M
+          memory: 128M
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.notification-hub.rule=Host(`notify.kingsleyonoh.com`)"
       - "traefik.http.routers.notification-hub.tls.certresolver=letsencrypt"
-      - "traefik.http.services.notification-hub.loadbalancer.server.port=3000"
+      - "traefik.http.services.notification-hub.loadbalancer.server.port=3847"
     networks:
       - traefik-public
-      - internal
-
-  postgres:
-    image: postgres:16-alpine
-    container_name: notification-hub-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: notification_hub
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 256M
-    networks:
-      - internal
-
-  redpanda:
-    image: redpandadata/redpanda:latest
-    container_name: notification-hub-redpanda
-    restart: unless-stopped
-    command:
-      - redpanda start
-      - --smp 1
-      - --memory 256M
-      - --overprovisioned
-      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
-      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
-    healthcheck:
-      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true'"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 512M
-    networks:
-      - internal
-
-volumes:
-  pg_data:
+      - shared-services_shared-internal
 
 networks:
   traefik-public:
     external: true
-  internal:
-    driver: bridge
+  shared-services_shared-internal:
+    external: true

@@ -14,4 +14,3 @@ Dockerfile
 .dockerignore
 vitest.config.ts
 drizzle.config.ts
-tsconfig.json
