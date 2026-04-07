@@ -23,6 +23,32 @@ function generateApiKey(): string {
   return crypto.randomBytes(24).toString('hex');
 }
 
+/** Strip secrets from tenant before sending to client */
+function sanitizeTenant(tenant: Record<string, unknown>) {
+  const { apiKey, config, ...safe } = tenant;
+  // Mask API key — only show last 8 chars
+  const maskedKey = typeof apiKey === 'string'
+    ? `${'*'.repeat(Math.max(0, apiKey.length - 8))}${apiKey.slice(-8)}`
+    : undefined;
+  // Strip secret fields from channel configs
+  const sanitizedConfig = redactChannelSecrets(config as Record<string, unknown> | null);
+  return { ...safe, apiKey: maskedKey, config: sanitizedConfig };
+}
+
+function redactChannelSecrets(config: Record<string, unknown> | null): Record<string, unknown> {
+  if (!config) return {};
+  const channels = config.channels as Record<string, Record<string, unknown>> | undefined;
+  if (!channels) return config;
+
+  const redacted: Record<string, Record<string, unknown>> = {};
+  for (const [channel, channelConfig] of Object.entries(channels)) {
+    redacted[channel] = { ...channelConfig };
+    if (redacted[channel].apiKey) redacted[channel].apiKey = '***REDACTED***';
+    if (redacted[channel].botToken) redacted[channel].botToken = '***REDACTED***';
+  }
+  return { ...config, channels: redacted };
+}
+
 export const adminRoutes = fp<AdminRoutesOptions>(async (app, opts) => {
   const { db } = opts;
 
@@ -51,7 +77,7 @@ export const adminRoutes = fp<AdminRoutesOptions>(async (app, opts) => {
   // GET /api/admin/tenants
   app.get('/api/admin/tenants', async () => {
     const rows = await db.select().from(tenants);
-    return { tenants: rows };
+    return { tenants: rows.map((r) => sanitizeTenant(r as unknown as Record<string, unknown>)) };
   });
 
   // GET /api/admin/tenants/:id
@@ -65,7 +91,7 @@ export const adminRoutes = fp<AdminRoutesOptions>(async (app, opts) => {
       throw new NotFoundError(`Tenant ${request.params.id} not found`);
     }
 
-    return { tenant };
+    return { tenant: sanitizeTenant(tenant as unknown as Record<string, unknown>) };
   });
 
   // PUT /api/admin/tenants/:id
@@ -91,7 +117,7 @@ export const adminRoutes = fp<AdminRoutesOptions>(async (app, opts) => {
       throw new NotFoundError(`Tenant ${request.params.id} not found`);
     }
 
-    return { tenant };
+    return { tenant: sanitizeTenant(tenant as unknown as Record<string, unknown>) };
   });
 
   // DELETE /api/admin/tenants/:id
