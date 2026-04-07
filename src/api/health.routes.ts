@@ -6,6 +6,7 @@ interface HealthRoutesOptions {
   db: Database;
   kafkaBrokers: string[];
   resendApiKey: string;
+  useKafka?: boolean;
 }
 
 async function checkPostgres(db: Database): Promise<boolean> {
@@ -50,27 +51,45 @@ async function checkResend(apiKey: string): Promise<boolean> {
 }
 
 export const healthRoutes = fp<HealthRoutesOptions>(async (app, opts) => {
-  const { db, kafkaBrokers, resendApiKey } = opts;
+  const { db, kafkaBrokers, resendApiKey, useKafka = true } = opts;
 
   app.get('/api/health', async () => {
-    const [pg, kafka, resend] = await Promise.allSettled([
-      checkPostgres(db),
-      checkKafka(kafkaBrokers),
-      checkResend(resendApiKey),
-    ]);
+    const checks: Promise<boolean>[] = [checkPostgres(db)];
 
-    const pgOk = pg.status === 'fulfilled' && pg.value;
-    const kafkaOk = kafka.status === 'fulfilled' && kafka.value;
-    const resendOk = resend.status === 'fulfilled' && resend.value;
+    if (useKafka && kafkaBrokers.length > 0) {
+      checks.push(checkKafka(kafkaBrokers));
+    }
 
-    const allOk = pgOk && kafkaOk && resendOk;
-    const allDown = !pgOk && !kafkaOk && !resendOk;
+    checks.push(checkResend(resendApiKey));
 
-    return {
-      status: allOk ? 'ok' : allDown ? 'down' : 'degraded',
+    const results = await Promise.allSettled(checks);
+    const pgOk = results[0].status === 'fulfilled' && results[0].value;
+
+    let kafkaOk: boolean | null = null;
+    let resendOk: boolean;
+
+    if (useKafka && kafkaBrokers.length > 0) {
+      kafkaOk = results[1].status === 'fulfilled' && results[1].value;
+      resendOk = results[2].status === 'fulfilled' && results[2].value;
+    } else {
+      resendOk = results[1].status === 'fulfilled' && results[1].value;
+    }
+
+    const coreOk = pgOk && resendOk && (kafkaOk === null || kafkaOk);
+    const allDown = !pgOk && !resendOk;
+
+    const response: Record<string, unknown> = {
+      status: coreOk ? 'ok' : allDown ? 'down' : 'degraded',
       pg: pgOk,
-      kafka: kafkaOk,
       resend: resendOk,
     };
+
+    if (kafkaOk !== null) {
+      response.kafka = kafkaOk;
+    } else {
+      response.mode = 'direct';
+    }
+
+    return response;
   });
 });

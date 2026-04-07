@@ -21,7 +21,7 @@ declare module 'fastify' {
 }
 
 const PUBLIC_ROUTES = ['/api/health'];
-const PUBLIC_PREFIXES = ['/ws/'];
+const PUBLIC_PREFIXES = ['/ws/', '/api/admin'];
 
 interface AuthPluginOptions {
   db: Database;

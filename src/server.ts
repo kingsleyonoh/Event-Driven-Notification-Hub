@@ -52,6 +52,7 @@ export async function buildApp(overrides?: { config?: Config; db?: Database }) {
     db,
     kafkaBrokers: config.KAFKA_BROKERS,
     resendApiKey: config.RESEND_API_KEY ?? '',
+    useKafka: config.USE_KAFKA,
   });
   await app.register(rulesRoutes, { db });
   await app.register(templatesRoutes, { db });
