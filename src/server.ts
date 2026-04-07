@@ -25,6 +25,7 @@ import { cleanupOldNotifications } from './processor/notification-cleanup.js';
 import { disconnectProducer } from './consumer/producer.js';
 import { checkConsumerLag } from './consumer/lag-monitor.js';
 import { checkEmailFailureRate } from './channels/email-monitor.js';
+import { createTelegramBotWorker } from './channels/telegram-bot.js';
 
 export async function buildApp(overrides?: { config?: Config; db?: Database }) {
   const config = overrides?.config ?? loadConfig();
@@ -75,6 +76,9 @@ async function start() {
     : undefined;
   const dispatchConfig = { email: emailConfig };
 
+  // Telegram bot polling worker
+  const telegramBot = createTelegramBotWorker(db);
+
   // Background jobs
   const digestIntervalMs = config.DIGEST_SCHEDULE === 'hourly' ? 3600_000 : 86400_000;
 
@@ -110,6 +114,11 @@ async function start() {
       name: 'email-failure-rate-check',
       fn: async () => { checkEmailFailureRate(); },
       intervalMs: 60_000, // every 60s
+    },
+    {
+      name: 'telegram-bot-poll',
+      fn: () => telegramBot.poll(),
+      intervalMs: 10_000, // every 10s
     },
   ]);
 
