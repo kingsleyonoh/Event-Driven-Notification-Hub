@@ -31,7 +31,7 @@ export const templates = pgTable(
     id: uuid('id').defaultRandom().primaryKey(),
     tenantId: text('tenant_id').notNull().default('default'),
     name: text('name').notNull(),
-    channel: text('channel', { enum: ['email', 'sms', 'in_app'] }).notNull(),
+    channel: text('channel', { enum: ['email', 'sms', 'in_app', 'telegram'] }).notNull(),
     subject: text('subject'),
     body: text('body').notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -50,7 +50,7 @@ export const notificationRules = pgTable(
     id: uuid('id').defaultRandom().primaryKey(),
     tenantId: text('tenant_id').notNull().default('default'),
     eventType: text('event_type').notNull(),
-    channel: text('channel', { enum: ['email', 'sms', 'in_app'] }).notNull(),
+    channel: text('channel', { enum: ['email', 'sms', 'in_app', 'telegram'] }).notNull(),
     templateId: uuid('template_id')
       .notNull()
       .references(() => templates.id, { onDelete: 'restrict' }),
@@ -90,6 +90,8 @@ export const userPreferences = pgTable(
     userId: text('user_id').notNull(),
     email: text('email'),
     phone: text('phone'),
+    telegramChatId: text('telegram_chat_id'),
+    telegramLinkToken: text('telegram_link_token'),
     optOut: jsonb('opt_out').default({}).$type<Record<string, string[]>>(),
     quietHours: jsonb('quiet_hours')
       .default({})
@@ -121,7 +123,7 @@ export const notifications = pgTable(
     eventType: text('event_type').notNull(),
     eventId: text('event_id').notNull(),
     recipient: text('recipient').notNull(),
-    channel: text('channel', { enum: ['email', 'sms', 'in_app'] }).notNull(),
+    channel: text('channel', { enum: ['email', 'sms', 'in_app', 'telegram'] }).notNull(),
     subject: text('subject'),
     bodyPreview: text('body_preview'),
     payload: jsonb('payload').$type<Record<string, unknown>>(),

@@ -27,6 +27,7 @@ export const preferencesRoutes = fp<PreferencesRoutesOptions>(async (app, opts) 
       userId,
       email: data.email,
       phone: data.phone,
+      telegramChatId: data.telegram_chat_id,
       optOut: data.opt_out,
       quietHours: data.quiet_hours,
       digestMode: data.digest_mode,
@@ -38,6 +39,7 @@ export const preferencesRoutes = fp<PreferencesRoutesOptions>(async (app, opts) 
     };
     if (data.email !== undefined) updates.email = data.email;
     if (data.phone !== undefined) updates.phone = data.phone;
+    if (data.telegram_chat_id !== undefined) updates.telegramChatId = data.telegram_chat_id;
     if (data.opt_out !== undefined) updates.optOut = data.opt_out;
     if (data.quiet_hours !== undefined) updates.quietHours = data.quiet_hours;
     if (data.digest_mode !== undefined) updates.digestMode = data.digest_mode;

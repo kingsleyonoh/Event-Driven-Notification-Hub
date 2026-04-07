@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { kafkaEventSchema } from './kafka.js';
+import { kafkaEventSchema, type MessageHandler } from './kafka.js';
+
+describe('MessageHandler type', () => {
+  it('accepts a handler with tenant record as fourth parameter', () => {
+    // This is a compile-time check — if MessageHandler doesn't accept
+    // a tenant parameter, TypeScript will fail to compile this test.
+    const handler: MessageHandler = async (_event, _rules, _recipients, tenant) => {
+      // Verify the tenant parameter shape is accessible
+      if (tenant) {
+        expect(typeof tenant.id).toBe('string');
+        expect(typeof tenant.config).toBe('object');
+      }
+    };
+    expect(handler).toBeDefined();
+  });
+});
 
 describe('kafkaEventSchema', () => {
   it('accepts valid event', () => {

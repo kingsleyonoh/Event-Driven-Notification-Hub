@@ -7,7 +7,7 @@ export async function isDuplicate(
   tenantId: string,
   eventId: string,
   recipient: string,
-  channel: 'email' | 'sms' | 'in_app',
+  channel: 'email' | 'sms' | 'in_app' | 'telegram',
   windowMinutes: number,
 ): Promise<boolean> {
   const windowStart = new Date(Date.now() - windowMinutes * 60 * 1000);

@@ -1,7 +1,7 @@
 import { describe, it, expect, afterAll } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createDb } from './client.js';
-import { tenants } from './schema.js';
+import { tenants, userPreferences } from './schema.js';
 
 const TEST_DB_URL =
   process.env.TEST_DATABASE_URL ??
@@ -66,5 +66,53 @@ describe('tenants table', () => {
 
     // Cleanup
     await db.delete(tenants).where(eq(tenants.id, `${testTenantId}-dup1`));
+  });
+});
+
+describe('user_preferences — telegram columns', () => {
+  const testTenantId = `test-tg-${Date.now()}`;
+
+  afterAll(async () => {
+    await db.delete(userPreferences).where(eq(userPreferences.tenantId, testTenantId));
+    await db.delete(tenants).where(eq(tenants.id, testTenantId));
+  });
+
+  it('stores and reads telegram_chat_id and telegram_link_token', async () => {
+    await db.insert(tenants).values({
+      id: testTenantId,
+      name: 'Telegram Test Tenant',
+      apiKey: `tg-key-${Date.now()}`,
+    });
+
+    await db.insert(userPreferences).values({
+      tenantId: testTenantId,
+      userId: 'tg-user-1',
+      telegramChatId: '123456789',
+      telegramLinkToken: 'tok_abc123',
+    });
+
+    const [prefs] = await db
+      .select()
+      .from(userPreferences)
+      .where(eq(userPreferences.userId, 'tg-user-1'));
+
+    expect(prefs).toBeDefined();
+    expect(prefs.telegramChatId).toBe('123456789');
+    expect(prefs.telegramLinkToken).toBe('tok_abc123');
+  });
+
+  it('telegram columns are nullable — defaults to null', async () => {
+    await db.insert(userPreferences).values({
+      tenantId: testTenantId,
+      userId: 'tg-user-2',
+    });
+
+    const [prefs] = await db
+      .select()
+      .from(userPreferences)
+      .where(eq(userPreferences.userId, 'tg-user-2'));
+
+    expect(prefs.telegramChatId).toBeNull();
+    expect(prefs.telegramLinkToken).toBeNull();
   });
 });

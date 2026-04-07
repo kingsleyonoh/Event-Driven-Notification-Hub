@@ -303,4 +303,35 @@ describe('processNotification', () => {
     expect(notif.status).toBe('skipped');
     expect(notif.skipReason).toBe('no_delivery_address');
   });
+
+  it('passes tenantConfig through to dispatch via PipelineConfig', async () => {
+    const dispatcherModule = await import('../channels/dispatcher.js');
+    const dispatchSpy = vi.spyOn(dispatcherModule, 'dispatch').mockResolvedValueOnce({
+      success: true,
+    });
+
+    const event = makeEvent({ event_id: `tc-${Date.now()}` });
+    const tenantConfig = {
+      channels: {
+        email: { apiKey: 're_tenant_key', from: 'tenant@test.com' },
+      },
+    };
+
+    await processNotification(db, event, rule, 'test@example.com', {
+      dedupWindowMinutes: 60,
+      digestSchedule: 'daily',
+      tenantConfig,
+    });
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      'email',
+      'test@example.com',
+      expect.any(String),
+      expect.any(String),
+      expect.objectContaining({ tenantId: tenant.id }),
+      expect.objectContaining({ tenantConfig }),
+    );
+
+    vi.restoreAllMocks();
+  });
 });

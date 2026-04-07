@@ -15,7 +15,7 @@ interface RuleRecord {
   id: string;
   tenantId: string;
   eventType: string;
-  channel: 'email' | 'sms' | 'in_app';
+  channel: 'email' | 'sms' | 'in_app' | 'telegram';
   templateId: string;
   recipientType: string;
   recipientValue: string;
@@ -29,6 +29,7 @@ interface PipelineConfig {
   dedupWindowMinutes: number;
   digestSchedule: 'hourly' | 'daily' | 'weekly';
   dispatch?: DispatchConfig;
+  tenantConfig?: Record<string, unknown> | null;
 }
 
 export async function processNotification(
@@ -147,9 +148,13 @@ export async function processNotification(
     .returning();
 
   // 8. Dispatch
+  const dispatchCfg: DispatchConfig = {
+    ...config.dispatch,
+    ...(config.tenantConfig ? { tenantConfig: config.tenantConfig } : {}),
+  };
   const result = await dispatch(rule.channel, deliveryAddress, renderedSubject, renderedBody, {
     tenantId, notificationId: notif.id, eventType,
-  }, config.dispatch);
+  }, dispatchCfg);
 
   if (result.success) {
     // For in_app, deliveredAt is set by WebSocket acknowledge — not on dispatch
@@ -170,7 +175,7 @@ async function insertNotification(
   db: Database,
   data: {
     tenantId: string; ruleId: string; eventType: string; eventId: string;
-    recipient: string; channel: 'email' | 'sms' | 'in_app';
+    recipient: string; channel: 'email' | 'sms' | 'in_app' | 'telegram';
     status: 'pending' | 'sent' | 'failed' | 'queued_digest' | 'skipped' | 'held';
     skipReason?: string; errorMessage?: string; payload?: Record<string, unknown>;
   },
@@ -182,7 +187,7 @@ async function insertDigestNotification(
   db: Database,
   data: {
     tenantId: string; ruleId: string; eventType: string; eventId: string;
-    recipient: string; channel: 'email' | 'sms' | 'in_app'; payload: Record<string, unknown>;
+    recipient: string; channel: 'email' | 'sms' | 'in_app' | 'telegram'; payload: Record<string, unknown>;
     userId: string; scheduledFor: Date;
   },
 ) {

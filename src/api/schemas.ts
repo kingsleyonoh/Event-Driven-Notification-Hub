@@ -2,7 +2,7 @@ import { z } from 'zod/v4';
 
 // ─── Shared enums ────────────────────────────────────────────────────
 
-export const channelEnum = z.enum(['email', 'sms', 'in_app']);
+export const channelEnum = z.enum(['email', 'sms', 'in_app', 'telegram']);
 export const urgencyEnum = z.enum(['low', 'normal', 'high', 'critical']);
 export const recipientTypeEnum = z.enum(['event_field', 'static', 'role']);
 export const digestScheduleEnum = z.enum(['hourly', 'daily', 'weekly']);
@@ -80,6 +80,7 @@ export const previewTemplateSchema = z.object({
 export const upsertPreferencesSchema = z.object({
   email: z.string().email().optional(),
   phone: z.string().min(1).optional(),
+  telegram_chat_id: z.string().optional(),
   opt_out: z.record(z.string(), z.array(z.string())).optional(),
   quiet_hours: z.object({
     start: z.string(),

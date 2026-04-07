@@ -17,7 +17,7 @@ export interface DispatchConfig {
 }
 
 export async function dispatch(
-  channel: 'email' | 'sms' | 'in_app',
+  channel: 'email' | 'sms' | 'in_app' | 'telegram',
   address: string,
   subject: string | null,
   body: string,
@@ -46,6 +46,14 @@ export async function dispatch(
         notificationId: metadata.notificationId,
         eventType: metadata.eventType ?? 'unknown',
       });
+
+    case 'telegram':
+      // Telegram handler will be implemented in a later batch
+      logger.info(
+        { channel, address, notificationId: metadata.notificationId },
+        'telegram dispatch (stub — handler not yet implemented)',
+      );
+      return { success: true };
   }
 }
 

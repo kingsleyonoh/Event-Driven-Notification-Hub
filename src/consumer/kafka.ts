@@ -25,10 +25,21 @@ export interface ConsumerConfig {
   topics: string;
 }
 
+export interface TenantRecord {
+  id: string;
+  name: string;
+  apiKey: string;
+  config: Record<string, unknown> | null;
+  enabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export type MessageHandler = (
   event: KafkaEvent,
   rules: Awaited<ReturnType<typeof matchRules>>,
   recipients: Map<string, string>,
+  tenant: TenantRecord,
 ) => Promise<void>;
 
 export async function createConsumer(
@@ -106,7 +117,7 @@ export async function createConsumer(
       }
 
       if (onMatched) {
-        await onMatched(event, rules, recipients);
+        await onMatched(event, rules, recipients, tenant as TenantRecord);
       }
 
       logger.info({

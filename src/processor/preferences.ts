@@ -55,7 +55,7 @@ export async function resolveDeliveryAddress(
   db: Database,
   tenantId: string,
   recipient: string,
-  channel: 'email' | 'sms' | 'in_app',
+  channel: 'email' | 'sms' | 'in_app' | 'telegram',
 ): Promise<{ address: string | null; preferences: typeof userPreferences.$inferSelect | null }> {
   // in_app always uses the recipient as the userId
   if (channel === 'in_app') {
@@ -77,6 +77,13 @@ export async function resolveDeliveryAddress(
     return { address: null, preferences: null };
   }
 
-  const address = channel === 'email' ? prefs.email : prefs.phone;
+  let address: string | null = null;
+  if (channel === 'email') {
+    address = prefs.email;
+  } else if (channel === 'sms') {
+    address = prefs.phone;
+  } else if (channel === 'telegram') {
+    address = prefs.telegramChatId;
+  }
   return { address: address ?? null, preferences: prefs };
 }

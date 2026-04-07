@@ -84,7 +84,7 @@ export async function createTestNotification(
     eventType: string;
     eventId: string;
     recipient: string;
-    channel: 'email' | 'sms' | 'in_app';
+    channel: 'email' | 'sms' | 'in_app' | 'telegram';
     status: 'pending' | 'sent' | 'failed' | 'queued_digest' | 'skipped' | 'held';
   },
 ) {
