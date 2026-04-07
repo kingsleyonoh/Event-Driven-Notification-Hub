@@ -54,21 +54,22 @@ describe('Templates CRUD API', () => {
     createdTemplateId = body.template.id;
   });
 
-  it('POST /api/templates — rejects __ prefixed names', async () => {
+  it('POST /api/templates — allows __ prefixed names (system templates like __digest)', async () => {
     const app = await buildTestApp();
     const response = await app.inject({
       method: 'POST',
       url: '/api/templates',
       headers: headers(),
       payload: {
-        name: '__system-reserved',
+        name: '__digest',
         channel: 'email',
-        body: 'test',
+        subject: 'Digest — {{count}} notifications',
+        body: '<h2>Digest</h2>',
       },
     });
 
-    expect(response.statusCode).toBe(400);
-    expect(response.json().error.code).toBe('VALIDATION_ERROR');
+    expect(response.statusCode).toBe(201);
+    expect(response.json().template.name).toBe('__digest');
   });
 
   it('POST /api/templates — rejects duplicate name per tenant', async () => {

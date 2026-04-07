@@ -54,18 +54,14 @@ export const updateRuleSchema = z.object({
 // ─── Templates ───────────────────────────────────────────────────────
 
 export const createTemplateSchema = z.object({
-  name: z.string().min(1).refine((val) => !val.startsWith('__'), {
-    message: 'Template names starting with __ are reserved for system use',
-  }),
+  name: z.string().min(1),
   channel: channelEnum,
   subject: z.string().optional(),
   body: z.string().min(1),
 });
 
 export const updateTemplateSchema = z.object({
-  name: z.string().min(1).refine((val) => !val.startsWith('__'), {
-    message: 'Template names starting with __ are reserved for system use',
-  }).optional(),
+  name: z.string().min(1).optional(),
   channel: channelEnum.optional(),
   subject: z.string().optional(),
   body: z.string().min(1).optional(),
