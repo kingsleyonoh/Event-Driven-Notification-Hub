@@ -90,146 +90,97 @@ npm run db:seed             # Seed demo tenants
 npm run dev                 # Start the Hub
 ```
 
-## Usage
+## How It Works
 
-### 1. Create a Tenant
+Your app fires events. The Hub takes it from there.
 
-Every consuming project gets its own tenant. The admin API generates a unique API key.
+```
+Your App                          Notification Hub                    User
+  │                                     │                              │
+  ├─ POST /api/events ─────────────────►│                              │
+  │  { event_type: "task.assigned",     │── match rules ──►            │
+  │    payload: { title: "Review PR",   │── render template ──►        │
+  │              assignee: "j@co.com" }}│── send via Resend ──────────►│ 📧
+  │                                     │                              │
+```
+
+No notification logic in your codebase. No Resend SDK. No template files. Just one HTTP call.
+
+### Integrating Your App (3 lines of code)
+
+Add this to any TypeScript project:
+
+```typescript
+// src/lib/events.ts
+export async function emitEvent(eventType: string, payload: Record<string, unknown>) {
+  if (process.env.NOTIFICATION_HUB_ENABLED !== 'true') return;
+  await fetch(`${process.env.NOTIFICATION_HUB_URL}/api/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': process.env.NOTIFICATION_HUB_API_KEY! },
+    body: JSON.stringify({ event_type: eventType, event_id: `${eventType}-${crypto.randomUUID()}`, payload }),
+  }).catch(err => console.error(`[events] ${eventType} failed:`, err));
+}
+```
+
+Then fire events from anywhere:
+
+```typescript
+// When a client is onboarded
+await emitEvent('client.onboarded', { clientName: 'Acme Corp', recipientEmail: 'admin@company.com' });
+
+// When a task is submitted
+await emitEvent('task.submitted', { title: 'Review PR #42', clientName: 'Acme', recipientEmail: 'dev@company.com' });
+```
+
+The Hub matches the event type against your rules, renders the Handlebars template with the payload data, and sends the email. Your app never touches Resend.
+
+### Onboarding a New Project
+
+Each consuming project becomes a **tenant** — isolated rules, templates, API key. Setup takes one admin call:
 
 ```bash
+# 1. Register your project as a tenant (admin-only, returns API key)
 curl -X POST https://notify.kingsleyonoh.com/api/admin/tenants \
   -H "X-Admin-Key: $ADMIN_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "My App",
-    "config": {
-      "channels": {
-        "email": {
-          "apiKey": "re_your_resend_key",
-          "from": "My App <app@notify.yourdomain.com>"
-        }
-      }
-    }
-  }'
-```
+  -d '{"name": "My App", "config": {"channels": {"email": {"apiKey": "re_xxx", "from": "My App <app@notify.domain.com>"}}}}'
 
-Response (API key shown only once):
-```json
-{
-  "tenant": {
-    "id": "my-app-a1b2c3d4",
-    "name": "My App",
-    "apiKey": "f8a2b1c9d4e5...",
-    "enabled": true
-  }
-}
-```
-
-### 2. Create a Template
-
-Templates use Handlebars syntax. Variables come from the event payload.
-
-```bash
+# 2. Create a template (what the email looks like)
 curl -X POST https://notify.kingsleyonoh.com/api/templates \
-  -H "X-API-Key: $TENANT_API_KEY" \
+  -H "X-API-Key: $TENANT_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "order-completed-email",
-    "channel": "email",
-    "subject": "Order #{{orderId}} Completed",
-    "body": "<h2>Order Complete</h2><p>Hi {{customerName}}, your order #{{orderId}} has shipped.</p>"
-  }'
-```
+  -d '{"name": "task-assigned-email", "channel": "email", "subject": "Task: {{title}}", "body": "<h2>{{title}}</h2><p>Assigned to {{assignee}}</p>"}'
 
-### 3. Create a Routing Rule
-
-Rules map event types to channels and recipients.
-
-```bash
+# 3. Create a rule (what triggers the email)
 curl -X POST https://notify.kingsleyonoh.com/api/rules \
-  -H "X-API-Key: $TENANT_API_KEY" \
+  -H "X-API-Key: $TENANT_KEY" \
   -H "Content-Type: application/json" \
-  -d '{
-    "event_type": "order.completed",
-    "channel": "email",
-    "template_id": "TEMPLATE_ID_FROM_STEP_2",
-    "recipient_type": "event_field",
-    "recipient_value": "customerEmail"
-  }'
+  -d '{"event_type": "task.assigned", "channel": "email", "template_id": "TEMPLATE_ID", "recipient_type": "event_field", "recipient_value": "recipientEmail"}'
 ```
 
-Recipient types: `static` (hardcoded address), `event_field` (extract from payload — works with both user IDs and direct email addresses).
+That's it. Every `task.assigned` event from your app now sends an email.
 
-### 4. Fire an Event
+### What the Hub Handles (So Your App Doesn't)
 
-From your project, POST events to the Hub. The Hub matches rules, renders templates, and delivers.
-
-```bash
-curl -X POST https://notify.kingsleyonoh.com/api/events \
-  -H "X-API-Key: $TENANT_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "event_type": "order.completed",
-    "event_id": "order-12345",
-    "payload": {
-      "orderId": "12345",
-      "customerName": "Jane",
-      "customerEmail": "jane@example.com"
-    }
-  }'
-```
-
-Response: `{"published": true, "processed": 1}`
-
-The email arrives at `jane@example.com` with subject "Order #12345 Completed".
-
-### 5. Check Delivery Status
-
-```bash
-curl https://notify.kingsleyonoh.com/api/notifications?limit=5 \
-  -H "X-API-Key: $TENANT_API_KEY"
-```
-
-```json
-{
-  "notifications": [
-    {
-      "eventType": "order.completed",
-      "channel": "email",
-      "status": "sent",
-      "recipient": "jane@example.com",
-      "subject": "Order #12345 Completed",
-      "deliveredAt": "2026-04-07T14:28:31.150Z"
-    }
-  ]
-}
-```
-
-### User Preferences
-
-Users can opt out of channels, set quiet hours, or enable digest mode:
-
-```bash
-curl -X PUT https://notify.kingsleyonoh.com/api/preferences/user-123 \
-  -H "X-API-Key: $TENANT_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "user@example.com",
-    "opt_out": {"email": ["marketing"]},
-    "quiet_hours": {"start": "22:00", "end": "07:00", "timezone": "Europe/Berlin"},
-    "digest_mode": true,
-    "digest_schedule": "daily"
-  }'
-```
+| Concern | How the Hub handles it |
+|---------|----------------------|
+| **Deduplication** | Same `event_id` + recipient + channel within 60 min = skipped |
+| **Opt-out** | Users set `opt_out: {"email": ["marketing"]}` — Hub enforces per-channel |
+| **Quiet hours** | Notifications held during `22:00–07:00` in user's timezone, released after |
+| **Digest mode** | User opts into daily/weekly batching — gets one summary email instead of 10 |
+| **Multi-channel** | One event can trigger email + Telegram + in-app push via separate rules |
+| **Template rendering** | Handlebars templates with `{{payload.field}}` — preview endpoint included |
+| **Delivery tracking** | Every notification logged with status (sent/failed/skipped) and reason |
+| **Tenant isolation** | Project A's events never trigger Project B's rules |
 
 ### Channels
 
-| Channel | How it works |
-|---------|-------------|
-| **Email** | Sent via Resend API. Per-tenant credentials in `config.channels.email`. |
-| **Telegram** | Sent via Bot API. Link accounts via `POST /api/preferences/:userId/telegram/link`. |
-| **In-App** | Pushed over WebSocket at `ws://host/ws/notifications?userId=X&tenantId=Y`. |
-| **SMS** | Stub — logs the message. Ready for Twilio/Vonage integration. |
+| Channel | Delivery | Setup |
+|---------|----------|-------|
+| **Email** | Resend API | Per-tenant credentials in tenant config |
+| **Telegram** | Bot API | Link via `POST /api/preferences/:userId/telegram/link` |
+| **In-App** | WebSocket push | Connect at `ws://host/ws/notifications?userId=X&tenantId=Y` |
+| **SMS** | Stub (logs only) | Ready for Twilio/Vonage integration |
 
 ## Tests
 
