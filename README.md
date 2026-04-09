@@ -216,4 +216,6 @@ docker compose -f docker-compose.prod.yml up -d
 
 Set the environment variables listed in **Setup > Environment** before starting. Run `npx drizzle-kit migrate` against your database to create the schema.
 
-<!-- THEATRE_LINK -->
+---
+
+Full case study, architectural breakdown, and engineering deep-dive at [kingsleyonoh.com/projects/event-driven-notification-hub](https://www.kingsleyonoh.com/projects/event-driven-notification-hub)

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { createDb } from './client.js';
 import { tenants, userPreferences } from './schema.js';
 
@@ -94,7 +94,7 @@ describe('user_preferences — telegram columns', () => {
     const [prefs] = await db
       .select()
       .from(userPreferences)
-      .where(eq(userPreferences.userId, 'tg-user-1'));
+      .where(and(eq(userPreferences.userId, 'tg-user-1'), eq(userPreferences.tenantId, testTenantId)));
 
     expect(prefs).toBeDefined();
     expect(prefs.telegramChatId).toBe('123456789');
