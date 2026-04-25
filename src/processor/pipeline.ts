@@ -218,12 +218,22 @@ export async function processNotification(
   }, dispatchCfg);
 
   if (result.success) {
+    // Phase 7 H5 — sandbox dispatch: notification is "sent" from the pipeline's
+    // perspective (it traversed all gates) but Resend was never called. Land
+    // it as `sent_sandbox` so tenants can distinguish real sends from sandbox
+    // sends in `/api/notifications` listings.
+    const isSandbox = result.sandbox === true;
     // For in_app, deliveredAt is set by WebSocket acknowledge — not on dispatch
     const deliveredAt = rule.channel === 'in_app' ? undefined : new Date();
+    const finalStatus: 'sent' | 'sent_sandbox' = isSandbox ? 'sent_sandbox' : 'sent';
     await db
       .update(notifications)
-      .set({ status: 'sent', ...(deliveredAt ? { deliveredAt } : {}) })
+      .set({ status: finalStatus, ...(deliveredAt ? { deliveredAt } : {}) })
       .where(eq(notifications.id, notif.id));
+    logger.info(
+      { eventId, recipient, notificationId: notif.id, sandbox: isSandbox },
+      isSandbox ? 'notification sandboxed' : 'notification sent',
+    );
   } else {
     await db
       .update(notifications)

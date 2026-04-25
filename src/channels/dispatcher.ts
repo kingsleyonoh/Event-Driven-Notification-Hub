@@ -10,6 +10,12 @@ const logger = createLogger('dispatcher');
 export interface DispatchResult {
   success: boolean;
   error?: string;
+  /**
+   * True when the email was processed in sandbox mode — logged + counted as
+   * sent, but the Resend API was NOT called. Pipeline maps this to
+   * `notifications.status = 'sent_sandbox'`. (Phase 7 H5.)
+   */
+  sandbox?: boolean;
 }
 
 export interface DispatchConfig {

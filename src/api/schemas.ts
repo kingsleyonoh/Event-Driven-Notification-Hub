@@ -7,7 +7,7 @@ export const urgencyEnum = z.enum(['low', 'normal', 'high', 'critical']);
 export const recipientTypeEnum = z.enum(['event_field', 'static', 'role']);
 export const digestScheduleEnum = z.enum(['hourly', 'daily', 'weekly']);
 export const notificationStatusEnum = z.enum([
-  'pending', 'sent', 'failed', 'queued_digest', 'skipped', 'held',
+  'pending', 'sent', 'sent_sandbox', 'failed', 'queued_digest', 'skipped', 'held',
 ]);
 
 // ─── Tenant Channel Config ──────────────────────────────────────────
@@ -19,6 +19,14 @@ export const emailChannelConfigSchema = z.object({
   // Phase 7 H4 — tenant-supplied URL that the Hub POSTs delivery
   // callbacks to (HMAC-signed via `tenants.delivery_callback_secret`).
   deliveryCallbackUrl: z.string().url().optional(),
+  // Phase 7 H5 — when true, the Hub logs outgoing email at info level
+  // and skips the Resend send. Notifications land as `sent_sandbox`.
+  // Default behavior when the field is absent is equivalent to `false`
+  // (the email branch checks `config.sandbox === true` strictly), so we
+  // leave it undefined-when-omitted rather than injecting `false` — that
+  // keeps the resolved config minimal and avoids polluting downstream
+  // equality assertions in tests.
+  sandbox: z.boolean().optional(),
 });
 
 export const telegramChannelConfigSchema = z.object({

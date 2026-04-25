@@ -16,6 +16,14 @@ export interface EmailConfig {
   replyTo?: string;
   attachments?: EmailAttachment[];
   headers?: Record<string, string>;
+  /**
+   * Phase 7 H5 — when true, the Hub logs the outgoing email at info level
+   * (subject + recipient + body excerpt) and SKIPS the Resend send. Used
+   * by tenants in dev/staging to exercise the pipeline without delivering
+   * real mail. The pipeline maps the resulting `sandbox: true` flag on
+   * DispatchResult to `notifications.status = 'sent_sandbox'`.
+   */
+  sandbox?: boolean;
 }
 
 /**
@@ -41,6 +49,22 @@ export async function sendEmail(
   config: EmailConfig,
   metadata?: EmailSendMetadata,
 ): Promise<DispatchResult> {
+  // Phase 7 H5 — sandbox short-circuit: log + return success, no Resend call.
+  // Body excerpt is capped at 200 chars to keep log volume bounded.
+  if (config.sandbox === true) {
+    logger.info(
+      {
+        to,
+        subject: subject ?? '',
+        bodyExcerpt: body.slice(0, 200),
+        sandbox: true,
+        ...(metadata ? { notificationId: metadata.notificationId } : {}),
+      },
+      'email sandboxed — Resend send skipped',
+    );
+    return { success: true, sandbox: true };
+  }
+
   const resend = new Resend(config.apiKey);
 
   try {

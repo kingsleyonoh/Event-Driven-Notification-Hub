@@ -134,7 +134,7 @@ export const notifications = pgTable(
     bodyPreview: text('body_preview'),
     payload: jsonb('payload').$type<Record<string, unknown>>(),
     status: text('status', {
-      enum: ['pending', 'sent', 'failed', 'queued_digest', 'skipped', 'held'],
+      enum: ['pending', 'sent', 'sent_sandbox', 'failed', 'queued_digest', 'skipped', 'held'],
     }).notNull(),
     skipReason: text('skip_reason'),
     errorMessage: text('error_message'),
