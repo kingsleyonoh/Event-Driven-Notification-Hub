@@ -16,6 +16,7 @@ import { eventsRoutes } from './api/events.routes.js';
 import { preferencesRoutes } from './api/preferences.routes.js';
 import { notificationsRoutes } from './api/notifications.routes.js';
 import { adminRoutes } from './api/admin.routes.js';
+import { webhookRoutes } from './api/webhooks.routes.js';
 import { heartbeatRoutes } from './heartbeat/routes.js';
 import { wsPlugin } from './ws/handler.js';
 import { createJobScheduler } from './jobs/scheduler.js';
@@ -80,6 +81,7 @@ export async function buildApp(overrides?: { config?: Config; db?: Database }) {
   await app.register(preferencesRoutes, { db });
   await app.register(notificationsRoutes, { db });
   await app.register(adminRoutes, { db });
+  await app.register(webhookRoutes, { db, webhookSecret: config.RESEND_WEBHOOK_SECRET });
   await app.register(heartbeatRoutes, { db });
 
   // WebSocket

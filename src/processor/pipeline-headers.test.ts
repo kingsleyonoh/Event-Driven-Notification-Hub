@@ -72,7 +72,11 @@ describe('processNotification — custom email headers (RFC 8058 List-Unsubscrib
 
     expect(mockResendSend).toHaveBeenCalledTimes(1);
     const sendArgs = mockResendSend.mock.calls[0][0];
-    expect(sendArgs.headers).toEqual({ 'X-Client-Id': 'abc' });
+    // X-Hub-* correlation headers (notification + tenant id) are added by
+    // sendEmail for Resend webhook round-trip — match alongside template headers.
+    expect(sendArgs.headers).toMatchObject({ 'X-Client-Id': 'abc' });
+    expect(sendArgs.headers['X-Hub-Notification-ID']).toBeTruthy();
+    expect(sendArgs.headers['X-Hub-Tenant-ID']).toBe(tenant.id);
 
     const [notif] = await db
       .select()
@@ -117,8 +121,11 @@ describe('processNotification — custom email headers (RFC 8058 List-Unsubscrib
     // Email IS still sent (no notification.failed)
     expect(mockResendSend).toHaveBeenCalledTimes(1);
     const sendArgs = mockResendSend.mock.calls[0][0];
-    // Good header survives, bad header omitted
-    expect(sendArgs.headers).toEqual({ 'X-Good-Header': 'works' });
+    // Good header survives, bad header omitted; X-Hub-* correlation headers added.
+    expect(sendArgs.headers).toMatchObject({ 'X-Good-Header': 'works' });
+    expect(sendArgs.headers['X-Bad-Header']).toBeUndefined();
+    expect(sendArgs.headers['X-Hub-Notification-ID']).toBeTruthy();
+    expect(sendArgs.headers['X-Hub-Tenant-ID']).toBe(tenant.id);
 
     const [notif] = await db
       .select()
@@ -161,10 +168,13 @@ describe('processNotification — custom email headers (RFC 8058 List-Unsubscrib
 
     expect(mockResendSend).toHaveBeenCalledTimes(1);
     const sendArgs = mockResendSend.mock.calls[0][0];
-    expect(sendArgs.headers).toEqual({
+    // RFC 8058 headers preserved alongside the X-Hub-* correlation pair.
+    expect(sendArgs.headers).toMatchObject({
       'List-Unsubscribe': '<https://x.com/u/abc>',
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
     });
+    expect(sendArgs.headers['X-Hub-Notification-ID']).toBeTruthy();
+    expect(sendArgs.headers['X-Hub-Tenant-ID']).toBe(tenant.id);
 
     const [notif] = await db
       .select()

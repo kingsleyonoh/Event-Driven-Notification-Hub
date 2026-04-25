@@ -52,6 +52,7 @@ describe('dispatch (with config — routes to real handlers)', () => {
     expect(sendEmail).toHaveBeenCalledWith(
       'user@example.com', 'Subject', 'Body',
       { apiKey: 're_test', from: 'noreply@test.com' },
+      { notificationId: 'n-10', tenantId: 'test' },
     );
   });
 
@@ -109,6 +110,7 @@ describe('dispatch (with tenantConfig — per-tenant channel credentials)', () =
     expect(sendEmail).toHaveBeenCalledWith(
       'user@example.com', 'Subject', 'Body',
       { apiKey: 're_tenant_key', from: 'sender@tenant.com' },
+      { notificationId: 'n-20', tenantId: 'test' },
     );
   });
 
@@ -133,6 +135,7 @@ describe('dispatch (with tenantConfig — per-tenant channel credentials)', () =
     expect(sendEmail).toHaveBeenCalledWith(
       'user@example.com', 'Subject', 'Body',
       { apiKey: 're_tenant_key', from: 'tenant@test.com' },
+      { notificationId: 'n-21', tenantId: 'test' },
     );
   });
 
@@ -153,6 +156,7 @@ describe('dispatch (with tenantConfig — per-tenant channel credentials)', () =
     expect(sendEmail).toHaveBeenCalledWith(
       'user@example.com', 'Subject', 'Body',
       { apiKey: 're_env_key', from: 'env@test.com' },
+      { notificationId: 'n-22', tenantId: 'test' },
     );
   });
 
@@ -239,6 +243,7 @@ describe('dispatch (email reply_to — three-layer resolution)', () => {
     expect(sendEmail).toHaveBeenCalledWith(
       'user@example.com', 'Subject', 'Body',
       expect.objectContaining({ replyTo: 'event@x.com' }),
+      { notificationId: 'n-replyto-1', tenantId: 'test' },
     );
   });
 
@@ -263,6 +268,7 @@ describe('dispatch (email reply_to — three-layer resolution)', () => {
     expect(sendEmail).toHaveBeenCalledWith(
       'user@example.com', 'Subject', 'Body',
       expect.objectContaining({ replyTo: 'template@x.com' }),
+      { notificationId: 'n-replyto-2', tenantId: 'test' },
     );
   });
 
@@ -286,6 +292,7 @@ describe('dispatch (email reply_to — three-layer resolution)', () => {
     expect(sendEmail).toHaveBeenCalledWith(
       'user@example.com', 'Subject', 'Body',
       expect.objectContaining({ replyTo: 'tenant@x.com' }),
+      { notificationId: 'n-replyto-3', tenantId: 'test' },
     );
   });
 

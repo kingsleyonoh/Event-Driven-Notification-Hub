@@ -139,6 +139,7 @@ export const notifications = pgTable(
     skipReason: text('skip_reason'),
     errorMessage: text('error_message'),
     deliveredAt: timestamp('delivered_at'),
+    bounceType: text('bounce_type'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [

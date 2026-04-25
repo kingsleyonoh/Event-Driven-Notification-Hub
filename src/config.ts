@@ -16,6 +16,7 @@ const configSchema = z.object({
 
   RESEND_API_KEY: z.string().min(1).optional(),
   RESEND_FROM: z.string().min(1).optional(),
+  RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
 
   API_KEYS: z.string().min(1).transform((val) => val.split(',').map((k) => k.trim())),
   ADMIN_API_KEY: z.string().min(1),

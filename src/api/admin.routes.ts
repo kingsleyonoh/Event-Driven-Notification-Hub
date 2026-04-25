@@ -23,9 +23,19 @@ function generateApiKey(): string {
   return crypto.randomBytes(24).toString('hex');
 }
 
+/**
+ * Mint a 32-byte hex `delivery_callback_secret` per tenant. Used to
+ * HMAC-sign outbound delivery callbacks (Phase 7 H4) — returned ONCE on
+ * tenant create alongside `apiKey`. The plaintext is NEVER returned by
+ * any subsequent GET; subsequent rotation is a future endpoint.
+ */
+function generateDeliveryCallbackSecret(): string {
+  return crypto.randomBytes(32).toString('hex');
+}
+
 /** Strip secrets from tenant before sending to client */
 function sanitizeTenant(tenant: Record<string, unknown>) {
-  const { apiKey, config, ...safe } = tenant;
+  const { apiKey, config, deliveryCallbackSecret: _redactedSecret, ...safe } = tenant;
   // Mask API key — only show last 8 chars
   const maskedKey = typeof apiKey === 'string'
     ? `${'*'.repeat(Math.max(0, apiKey.length - 8))}${apiKey.slice(-8)}`
@@ -63,17 +73,31 @@ export const adminRoutes = fp<AdminRoutesOptions>(async (app, opts) => {
 
     const { name, config } = parsed.data;
 
+    // Mint both secrets at create time. `deliveryCallbackSecret` is returned
+    // ONCE on this response and never again — the sanitizer strips it on
+    // subsequent GETs. Tenants must capture it now (or rotate later).
+    const deliveryCallbackSecret = generateDeliveryCallbackSecret();
+
     const [tenant] = await db
       .insert(tenants)
       .values({
         id: generateId(name),
         name,
         apiKey: generateApiKey(),
+        deliveryCallbackSecret,
         config: config ?? {},
       })
       .returning();
 
-    return reply.status(201).send({ tenant });
+    // Return the unredacted apiKey AND the one-time delivery_callback_secret.
+    // The sanitizer is intentionally NOT applied here — create-time response
+    // is the only legitimate channel for these plaintext secrets.
+    return reply.status(201).send({
+      tenant: {
+        ...(tenant as Record<string, unknown>),
+        deliveryCallbackSecret,
+      },
+    });
   });
 
   // GET /api/admin/tenants

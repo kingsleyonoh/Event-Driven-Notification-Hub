@@ -76,6 +76,34 @@ describe('Admin Tenants API — CRUD', () => {
     createdTenantIds.push(body.tenant.id);
   });
 
+  it('POST /api/admin/tenants — returns one-time delivery_callback_secret + suppresses on GET', async () => {
+    const app = await buildTestApp();
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/admin/tenants',
+      headers: adminHeaders(),
+      payload: { name: 'Callback Secret Tenant' },
+    });
+
+    expect(createRes.statusCode).toBe(201);
+    const created = createRes.json();
+    // 32-byte hex secret returned ONCE on create.
+    expect(created.tenant.deliveryCallbackSecret).toBeDefined();
+    expect(typeof created.tenant.deliveryCallbackSecret).toBe('string');
+    expect(created.tenant.deliveryCallbackSecret).toMatch(/^[0-9a-f]{64}$/);
+    createdTenantIds.push(created.tenant.id);
+
+    // GET must NOT return the secret — sanitizer strips it.
+    const getRes = await app.inject({
+      method: 'GET',
+      url: `/api/admin/tenants/${created.tenant.id}`,
+      headers: adminHeaders(),
+    });
+    expect(getRes.statusCode).toBe(200);
+    const fetched = getRes.json();
+    expect(fetched.tenant.deliveryCallbackSecret).toBeUndefined();
+  });
+
   it('POST /api/admin/tenants — rejects missing name', async () => {
     const app = await buildTestApp();
     const res = await app.inject({

@@ -43,6 +43,13 @@
       "when": 1777150471896,
       "tag": "0005_green_shotgun",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1777152000000,
+      "tag": "0006_bounce_type",
+      "breakpoints": true
     }
   ]
 }

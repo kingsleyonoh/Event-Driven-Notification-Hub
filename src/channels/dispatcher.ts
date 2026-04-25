@@ -55,7 +55,10 @@ export async function dispatch(
         if (finalConfig.replyTo === undefined) {
           delete finalConfig.replyTo;
         }
-        return sendEmail(address, subject, body, finalConfig);
+        return sendEmail(address, subject, body, finalConfig, {
+          notificationId: metadata.notificationId,
+          tenantId: metadata.tenantId,
+        });
       }
       logger.info(
         { channel, address, subject, notificationId: metadata.notificationId },
