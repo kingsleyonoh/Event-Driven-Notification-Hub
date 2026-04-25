@@ -15,6 +15,7 @@
 | `007-tenant-channel-config.md` | Channel credentials resolved via `resolveTenantChannelConfig()` from `tenants.config` JSONB, never read inline. |
 | `008-typed-error-detail.md` | AppError subclasses can carry typed structured metadata via a `<domainDetails>` instance field, while keeping the `details: [json_string]` wire shape. |
 | `009-soft-fail-per-key-handlebars-render.md` | Per-key soft-fail when rendering a `{key: handlebarsTemplate}` JSONB map — skip + warn on per-entry throw, ship the rest. Used for email headers (RFC 8058 List-Unsubscribe). |
+| `010-hmac-signed-outbound-callback.md` | HMAC-SHA256 signing recipe for ALL Hub→tenant outbound callbacks: per-tenant secret, canonical JSON, `X-Hub-Signature: sha256=<hex>`, 5s timeout, never-blocks. |
 | `EXAMPLE.md` | Template showing the expected shape — delete once a real pattern exists. |
 
 ## How to add a new pattern

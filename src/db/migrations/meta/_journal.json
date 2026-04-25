@@ -36,6 +36,13 @@
       "when": 1777149507441,
       "tag": "0004_productive_millenium_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1777150471896,
+      "tag": "0005_green_shotgun",
+      "breakpoints": true
     }
   ]
 }

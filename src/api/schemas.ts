@@ -16,6 +16,9 @@ export const emailChannelConfigSchema = z.object({
   apiKey: z.string().min(1),
   from: z.string().min(1),
   replyTo: z.string().email().optional(),
+  // Phase 7 H4 — tenant-supplied URL that the Hub POSTs delivery
+  // callbacks to (HMAC-signed via `tenants.delivery_callback_secret`).
+  deliveryCallbackUrl: z.string().url().optional(),
 });
 
 export const telegramChannelConfigSchema = z.object({

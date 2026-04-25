@@ -16,6 +16,7 @@ export const tenants = pgTable('tenants', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   apiKey: text('api_key').notNull().unique(),
+  deliveryCallbackSecret: text('delivery_callback_secret'),
   config: jsonb('config').default({}).$type<Record<string, unknown>>(),
   enabled: boolean('enabled').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -178,6 +179,38 @@ export const digestQueue = pgTable(
       table.sent,
     ),
     index('digest_scheduled_for_idx').on(table.scheduledFor),
+  ],
+);
+
+// ─── Email Delivery Events (Section 7 H4) ───────────────────────────
+// Persists Resend webhook events (delivered/bounced/complained/etc).
+// `notification_id` is nullable because the webhook may arrive before
+// correlation succeeds (e.g. metadata stripped) — we still keep the
+// event for audit. `callback_status_code` is nullable until the tenant
+// callback fires.
+
+export const emailDeliveryEvents = pgTable(
+  'email_delivery_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    notificationId: uuid('notification_id').references(() => notifications.id, {
+      onDelete: 'set null',
+    }),
+    resendEmailId: text('resend_email_id').notNull(),
+    eventType: text('event_type').notNull(),
+    rawPayload: jsonb('raw_payload').$type<Record<string, unknown>>().notNull(),
+    callbackStatusCode: integer('callback_status_code'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('email_delivery_events_tenant_created_idx').on(
+      table.tenantId,
+      table.createdAt.desc(),
+    ),
+    index('email_delivery_events_resend_email_id_idx').on(table.resendEmailId),
   ],
 );
 
