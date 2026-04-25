@@ -13,6 +13,7 @@ export interface EmailAttachment {
 export interface EmailConfig {
   apiKey: string;
   from: string;
+  replyTo?: string;
   attachments?: EmailAttachment[];
 }
 
@@ -30,6 +31,7 @@ export async function sendEmail(
       to: string;
       subject: string;
       html: string;
+      replyTo?: string;
       attachments?: EmailAttachment[];
     } = {
       from: config.from,
@@ -37,6 +39,10 @@ export async function sendEmail(
       subject: subject ?? '',
       html: body,
     };
+
+    if (config.replyTo) {
+      sendPayload.replyTo = config.replyTo;
+    }
 
     if (config.attachments && config.attachments.length > 0) {
       sendPayload.attachments = config.attachments;

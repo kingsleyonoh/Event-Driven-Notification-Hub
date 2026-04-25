@@ -15,6 +15,7 @@ export const notificationStatusEnum = z.enum([
 export const emailChannelConfigSchema = z.object({
   apiKey: z.string().min(1),
   from: z.string().min(1),
+  replyTo: z.string().email().optional(),
 });
 
 export const telegramChannelConfigSchema = z.object({
@@ -72,6 +73,7 @@ export const createTemplateSchema = z.object({
   subject: z.string().optional(),
   body: z.string().min(1),
   attachments_config: attachmentsConfigSchema,
+  reply_to: z.string().email().nullable().optional(),
 });
 
 export const updateTemplateSchema = z.object({
@@ -80,6 +82,7 @@ export const updateTemplateSchema = z.object({
   subject: z.string().optional(),
   body: z.string().min(1).optional(),
   attachments_config: attachmentsConfigSchema,
+  reply_to: z.string().email().nullable().optional(),
 });
 
 export const previewTemplateSchema = z.object({

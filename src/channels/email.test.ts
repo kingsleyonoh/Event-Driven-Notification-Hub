@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { sendEmail } from './email.js';
+import { sendEmail, type EmailConfig } from './email.js';
 
 // Mock the resend package — third-party API with billing (allowed per mock policy)
 const mockSend = vi.fn();
@@ -107,5 +107,39 @@ describe('sendEmail', () => {
 
     const callArgs = mockSend.mock.calls[0][0];
     expect(callArgs).not.toHaveProperty('attachments');
+  });
+
+  it('forwards replyTo to Resend when set; omits when absent', async () => {
+    // Case 1: replyTo set on EmailConfig → Resend call payload includes replyTo
+    mockSend.mockResolvedValue({ data: { id: 'msg-rt-1' }, error: null });
+
+    const configWithReplyTo: EmailConfig = {
+      ...config,
+      replyTo: 'support@x.com',
+    };
+
+    await sendEmail(
+      'user@example.com',
+      'Need help?',
+      '<p>Hello</p>',
+      configWithReplyTo,
+    );
+
+    expect(mockSend).toHaveBeenCalledWith({
+      from: 'noreply@test.com',
+      to: 'user@example.com',
+      subject: 'Need help?',
+      html: '<p>Hello</p>',
+      replyTo: 'support@x.com',
+    });
+
+    // Case 2: replyTo absent on EmailConfig → call payload has no replyTo key
+    mockSend.mockReset();
+    mockSend.mockResolvedValue({ data: { id: 'msg-rt-2' }, error: null });
+
+    await sendEmail('user@example.com', 'No reply-to', '<p>Body</p>', config);
+
+    const callArgs = mockSend.mock.calls[0][0];
+    expect(callArgs).not.toHaveProperty('replyTo');
   });
 });

@@ -34,6 +34,7 @@ export const templates = pgTable(
     channel: text('channel', { enum: ['email', 'sms', 'in_app', 'telegram'] }).notNull(),
     subject: text('subject'),
     body: text('body').notNull(),
+    replyTo: text('reply_to'),
     attachmentsConfig: jsonb('attachments_config').$type<
       Array<{ filename_template: string; url_field: string }>
     >(),
