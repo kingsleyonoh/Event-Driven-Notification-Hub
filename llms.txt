@@ -1,0 +1,53 @@
+# Event-Driven Notification Hub
+
+> Multi-tenant notification routing service. Consumes Kafka events and dispatches notifications across email (Resend), SMS, in-app (WebSocket), Telegram, and batched digest channels with rule-based routing, per-user preference management, deduplication, quiet hours, and Handlebars templating.
+
+## What This Does
+
+Tenants register notification rules that match incoming Kafka event types to channel + template combinations. The processor evaluates per-user preferences (opt-out, quiet hours, digest mode), runs deduplication, and dispatches via the appropriate channel handler. Failures, sliding-window failure-rate alerts, and consumer-lag alerts are all observable via the API and logs.
+
+## Who This Is For
+
+Backend services in a portfolio of multi-tenant SaaS products that emit domain events and need a single, opinionated way to deliver user-facing notifications across multiple channels — without each service rebuilding email / SMS / digest logic.
+
+## Quick Start
+
+1. Clone the repo
+2. Install: `npm install`
+3. Configure: `cp .env.example .env` and fill in `DATABASE_URL`, `KAFKA_BROKERS`, `RESEND_API_KEY`, `ADMIN_API_KEY`
+4. Start infra: `docker compose up -d`
+5. Migrate DB: `npx drizzle-kit migrate`
+6. Run: `npm run dev`
+
+## API Surface
+
+- `POST /api/events` — Test event publisher (publishes to Kafka)
+- `GET|POST|PATCH|DELETE /api/rules` — Notification rule CRUD per tenant
+- `GET|POST|PATCH|DELETE /api/templates` — Handlebars template CRUD per tenant
+- `GET|POST|PATCH|DELETE /api/preferences` — User preference CRUD per tenant
+- `GET /api/notifications` — List notifications with cursor pagination
+- `POST /api/heartbeats/register|/pulse` and `GET|DELETE /api/heartbeats` — Liveness monitoring
+- `POST|PATCH|DELETE /api/admin/tenants` — Admin tenant CRUD (X-Admin-Key required)
+- `GET /api/health` — Postgres + Kafka + Resend status (BetterStack monitors this)
+- `WS /ws?userId=...` — Real-time in-app notification stream
+
+All tenant-facing routes require `X-API-Key` header (resolves a tenant); admin routes require `X-Admin-Key`.
+
+## Integration
+
+- **Kafka/Redpanda** — consumes domain events from any topic matching `KAFKA_TOPICS` glob
+- **Resend** — outbound email (per-tenant API key in `tenants.config`, falls back to `RESEND_API_KEY`)
+- **Telegram Bot API** — per-tenant bot tokens; users link via `/start <token>` flow
+- **WebSocket** — clients connect to `/ws?userId=...` for in-app push
+- **BetterStack** — uptime polling on `/api/health`
+
+## Architecture
+
+Fastify server with plugin-registered middleware (error handler → rate limiter → admin auth → tenant auth → routes). Drizzle ORM over PostgreSQL 16 (per-tenant scoping via `tenant_id` FK on every data-bearing table). KafkaJS consumer reads events, the router matches against `notification_rules`, the processor pipeline evaluates preferences/dedup/quiet-hours/digest, and the channel dispatcher routes to email/sms/in_app/telegram handlers. Background jobs (digest, quiet-hours release, heartbeat checker, notification cleanup, monitoring) run via a generic interval scheduler.
+
+## Source
+
+- Documentation: ./README.md
+- API spec: ./openapi.yaml
+- Agent context: ./AGENTS.md
+- Codebase context: ./.agent/rules/CODEBASE_CONTEXT.md
