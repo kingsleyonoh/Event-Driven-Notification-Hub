@@ -16,6 +16,7 @@
 | 013 | `013-batch.md` | Phase 7 H4 part 3 — webhook integration tests + USER_SETUP docs. **H4 COMPLETE. Ship-gate CRITICAL/HIGH set DONE (H1+H2+H3+H4).** |
 | 014 | `014-batch.md` | Phase 7 H5 — sandbox mode per tenant. Status CHECK widened to `sent_sandbox`. **H5 COMPLETE.** Gotcha: drizzle-text-enum-no-check-constraint. |
 | 015 | `015-batch.md` | Phase 7 H8 — plain-text email body fallback (`body_text`). **H8 COMPLETE.** |
+| 016 | `016-batch.md` | Phase 7 H7 — per-tenant rate limit on `/api/events` + admin PATCH route. **H7 COMPLETE.** Hook-ordering fix (preHandler vs onRequest). |
 
 ## How batch files are written
 
