@@ -10,6 +10,7 @@
 | 007 | `007-batch.md` | Phase 7 H1 wiring — `EmailConfig.attachments` + pipeline `fetchAttachments()` call + 4 integration tests. H1 COMPLETE. |
 | 008 | `008-batch.md` | Phase 7 H2 part 1 — `templates.reply_to` column, tenant config Zod `replyTo`, `EmailConfig.replyTo` → Resend SDK. |
 | 009 | `009-batch.md` | Phase 7 H2 part 2 — dispatcher 3-layer reply_to resolution + 5 tests. **H2 COMPLETE.** |
+| 010 | `010-batch.md` | Phase 7 H3 — custom email headers (RFC 8058 List-Unsubscribe), Handlebars rendering, 13 tests. **H3 COMPLETE.** Pattern 009. |
 
 ## How batch files are written
 
