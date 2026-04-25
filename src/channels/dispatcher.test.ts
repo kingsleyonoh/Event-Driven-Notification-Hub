@@ -215,3 +215,98 @@ describe('dispatch (with tenantConfig — per-tenant channel credentials)', () =
     expect(sendTelegram).not.toHaveBeenCalled();
   });
 });
+
+describe('dispatch (email reply_to — three-layer resolution)', () => {
+  it('uses event-level _reply_to when present (event > template > tenant)', async () => {
+    const { sendEmail } = await import('./email.js');
+    vi.mocked(sendEmail).mockClear();
+
+    const result = await dispatch(
+      'email', 'user@example.com', 'Subject', 'Body',
+      { tenantId: 'test', notificationId: 'n-replyto-1' },
+      {
+        tenantConfig: {
+          channels: {
+            email: { apiKey: 're_key', from: 'noreply@x.com', replyTo: 'tenant@x.com' },
+          },
+        },
+        templateReplyTo: 'template@x.com',
+        eventReplyTo: 'event@x.com',
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(sendEmail).toHaveBeenCalledWith(
+      'user@example.com', 'Subject', 'Body',
+      expect.objectContaining({ replyTo: 'event@x.com' }),
+    );
+  });
+
+  it('uses template reply_to when event _reply_to absent (template > tenant)', async () => {
+    const { sendEmail } = await import('./email.js');
+    vi.mocked(sendEmail).mockClear();
+
+    const result = await dispatch(
+      'email', 'user@example.com', 'Subject', 'Body',
+      { tenantId: 'test', notificationId: 'n-replyto-2' },
+      {
+        tenantConfig: {
+          channels: {
+            email: { apiKey: 're_key', from: 'noreply@x.com', replyTo: 'tenant@x.com' },
+          },
+        },
+        templateReplyTo: 'template@x.com',
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(sendEmail).toHaveBeenCalledWith(
+      'user@example.com', 'Subject', 'Body',
+      expect.objectContaining({ replyTo: 'template@x.com' }),
+    );
+  });
+
+  it('uses tenant replyTo when neither event nor template provide one', async () => {
+    const { sendEmail } = await import('./email.js');
+    vi.mocked(sendEmail).mockClear();
+
+    const result = await dispatch(
+      'email', 'user@example.com', 'Subject', 'Body',
+      { tenantId: 'test', notificationId: 'n-replyto-3' },
+      {
+        tenantConfig: {
+          channels: {
+            email: { apiKey: 're_key', from: 'noreply@x.com', replyTo: 'tenant@x.com' },
+          },
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(sendEmail).toHaveBeenCalledWith(
+      'user@example.com', 'Subject', 'Body',
+      expect.objectContaining({ replyTo: 'tenant@x.com' }),
+    );
+  });
+
+  it('omits replyTo entirely when all three layers are absent', async () => {
+    const { sendEmail } = await import('./email.js');
+    vi.mocked(sendEmail).mockClear();
+
+    const result = await dispatch(
+      'email', 'user@example.com', 'Subject', 'Body',
+      { tenantId: 'test', notificationId: 'n-replyto-4' },
+      {
+        tenantConfig: {
+          channels: {
+            email: { apiKey: 're_key', from: 'noreply@x.com' },
+          },
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    const callArgs = vi.mocked(sendEmail).mock.calls[0][3];
+    expect(callArgs).not.toHaveProperty('replyTo');
+  });
+});

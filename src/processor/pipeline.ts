@@ -180,11 +180,17 @@ export async function processNotification(
     }
   }
 
-  // 8. Dispatch
+  // 8. Dispatch — assemble three-layer reply_to inputs (email channel only)
+  const eventReplyTo =
+    rule.channel === 'email' && typeof payload?._reply_to === 'string'
+      ? (payload._reply_to as string)
+      : null;
   const dispatchCfg: DispatchConfig = {
     ...config.dispatch,
     ...(config.tenantConfig ? { tenantConfig: config.tenantConfig } : {}),
     ...(emailAttachments ? { attachments: emailAttachments } : {}),
+    ...(rule.channel === 'email' && tmpl.replyTo ? { templateReplyTo: tmpl.replyTo } : {}),
+    ...(eventReplyTo ? { eventReplyTo } : {}),
   };
   const result = await dispatch(rule.channel, deliveryAddress, renderedSubject, renderedBody, {
     tenantId, notificationId: notif.id, eventType,

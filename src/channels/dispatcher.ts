@@ -16,6 +16,10 @@ export interface DispatchConfig {
   email?: EmailConfig;
   tenantConfig?: Record<string, unknown> | null;
   attachments?: EmailAttachment[];
+  /** Template-level reply_to (from `templates.reply_to` column, if set). */
+  templateReplyTo?: string | null;
+  /** Event-level reply_to (from event payload `_reply_to`, if present). */
+  eventReplyTo?: string | null;
 }
 
 export async function dispatch(
@@ -30,9 +34,18 @@ export async function dispatch(
     case 'email': {
       const emailConfig = resolveEmailConfig(config);
       if (emailConfig) {
-        const finalConfig: EmailConfig = config?.attachments && config.attachments.length > 0
-          ? { ...emailConfig, attachments: config.attachments }
-          : emailConfig;
+        const resolvedReplyTo = resolveReplyTo(config, emailConfig);
+        const finalConfig: EmailConfig = {
+          ...emailConfig,
+          ...(resolvedReplyTo !== undefined ? { replyTo: resolvedReplyTo } : { replyTo: undefined }),
+          ...(config?.attachments && config.attachments.length > 0
+            ? { attachments: config.attachments }
+            : {}),
+        };
+        // Strip replyTo if undefined so EmailConfig doesn't carry an explicit `replyTo: undefined`
+        if (finalConfig.replyTo === undefined) {
+          delete finalConfig.replyTo;
+        }
         return sendEmail(address, subject, body, finalConfig);
       }
       logger.info(
@@ -74,6 +87,24 @@ function resolveTelegramConfig(config?: DispatchConfig): TelegramConfig | null {
     }
   }
   return null;
+}
+
+/**
+ * Three-layer reply_to resolution:
+ *   1. event payload `_reply_to` (passed via `config.eventReplyTo`)
+ *   2. template `reply_to` column (passed via `config.templateReplyTo`)
+ *   3. tenant `config.channels.email.replyTo` (already on resolved EmailConfig)
+ *
+ * Returns `undefined` if all three layers are absent — caller deletes the field.
+ */
+function resolveReplyTo(
+  config: DispatchConfig | undefined,
+  emailConfig: EmailConfig,
+): string | undefined {
+  if (config?.eventReplyTo) return config.eventReplyTo;
+  if (config?.templateReplyTo) return config.templateReplyTo;
+  if (emailConfig.replyTo) return emailConfig.replyTo;
+  return undefined;
 }
 
 function resolveEmailConfig(config?: DispatchConfig): EmailConfig | null {
