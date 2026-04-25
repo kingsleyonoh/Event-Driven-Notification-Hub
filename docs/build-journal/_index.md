@@ -9,6 +9,7 @@
 | 006 | `006-batch.md` | Phase 7 H1 foundation — `templates.attachments_config` column, Zod schema, `fetchAttachments()` module + 14 tests. |
 | 007 | `007-batch.md` | Phase 7 H1 wiring — `EmailConfig.attachments` + pipeline `fetchAttachments()` call + 4 integration tests. H1 COMPLETE. |
 | 008 | `008-batch.md` | Phase 7 H2 part 1 — `templates.reply_to` column, tenant config Zod `replyTo`, `EmailConfig.replyTo` → Resend SDK. |
+| 009 | `009-batch.md` | Phase 7 H2 part 2 — dispatcher 3-layer reply_to resolution + 5 tests. **H2 COMPLETE.** |
 
 ## How batch files are written
 
