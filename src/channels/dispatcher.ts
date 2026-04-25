@@ -1,4 +1,4 @@
-import { sendEmail, type EmailConfig } from './email.js';
+import { sendEmail, type EmailConfig, type EmailAttachment } from './email.js';
 import { sendSms } from './sms.js';
 import { sendInApp } from './in-app.js';
 import { sendTelegram, type TelegramConfig } from './telegram.js';
@@ -15,6 +15,7 @@ export interface DispatchResult {
 export interface DispatchConfig {
   email?: EmailConfig;
   tenantConfig?: Record<string, unknown> | null;
+  attachments?: EmailAttachment[];
 }
 
 export async function dispatch(
@@ -29,7 +30,10 @@ export async function dispatch(
     case 'email': {
       const emailConfig = resolveEmailConfig(config);
       if (emailConfig) {
-        return sendEmail(address, subject, body, emailConfig);
+        const finalConfig: EmailConfig = config?.attachments && config.attachments.length > 0
+          ? { ...emailConfig, attachments: config.attachments }
+          : emailConfig;
+        return sendEmail(address, subject, body, finalConfig);
       }
       logger.info(
         { channel, address, subject, notificationId: metadata.notificationId },

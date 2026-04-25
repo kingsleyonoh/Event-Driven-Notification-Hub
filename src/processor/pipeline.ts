@@ -5,6 +5,9 @@ import { isDuplicate } from './deduplicator.js';
 import { renderSubjectAndBody } from '../templates/renderer.js';
 import { computeScheduledFor } from '../lib/scheduling.js';
 import { dispatch, type DispatchConfig } from '../channels/dispatcher.js';
+import { fetchAttachments } from '../channels/attachments.js';
+import { AttachmentFetchError } from '../lib/errors.js';
+import type { EmailAttachment } from '../channels/email.js';
 import { createLogger } from '../lib/logger.js';
 import type { Database } from '../db/client.js';
 import type { KafkaEvent } from '../consumer/kafka.js';
@@ -150,10 +153,38 @@ export async function processNotification(
     })
     .returning();
 
+  // 7b. Fetch attachments (email channel only, when template has attachments_config)
+  let emailAttachments: EmailAttachment[] | undefined;
+  if (rule.channel === 'email' && tmpl.attachmentsConfig && tmpl.attachmentsConfig.length > 0) {
+    try {
+      const fetched = await fetchAttachments(tmpl.attachmentsConfig, payload);
+      emailAttachments = fetched.map((a) => ({
+        filename: a.filename,
+        content: a.content_base64,
+      }));
+    } catch (err) {
+      const isAttachmentError = err instanceof AttachmentFetchError;
+      const message = err instanceof Error ? err.message : 'attachment fetch failed';
+      logger.error(
+        { eventId, recipient, notificationId: notif.id, error: message },
+        'attachment fetch failed — marking notification failed, skipping dispatch',
+      );
+      await db
+        .update(notifications)
+        .set({
+          status: 'failed',
+          errorMessage: isAttachmentError ? `attachment fetch failed: ${message}` : message,
+        })
+        .where(eq(notifications.id, notif.id));
+      return;
+    }
+  }
+
   // 8. Dispatch
   const dispatchCfg: DispatchConfig = {
     ...config.dispatch,
     ...(config.tenantConfig ? { tenantConfig: config.tenantConfig } : {}),
+    ...(emailAttachments ? { attachments: emailAttachments } : {}),
   };
   const result = await dispatch(rule.channel, deliveryAddress, renderedSubject, renderedBody, {
     tenantId, notificationId: notif.id, eventType,

@@ -68,4 +68,44 @@ describe('sendEmail', () => {
       html: 'Body only',
     });
   });
+
+  it('forwards attachments to Resend when attachments are provided', async () => {
+    mockSend.mockResolvedValue({ data: { id: 'msg-789' }, error: null });
+
+    const configWithAttachments = {
+      ...config,
+      attachments: [
+        { filename: 'invoice-1234.pdf', content: 'JVBERi0xLjQK' },
+        { filename: 'receipt-1234.pdf', content: 'JVBERi0xLjUK' },
+      ],
+    };
+
+    const result = await sendEmail(
+      'user@example.com',
+      'With attachments',
+      '<p>See attached</p>',
+      configWithAttachments,
+    );
+
+    expect(result.success).toBe(true);
+    expect(mockSend).toHaveBeenCalledWith({
+      from: 'noreply@test.com',
+      to: 'user@example.com',
+      subject: 'With attachments',
+      html: '<p>See attached</p>',
+      attachments: [
+        { filename: 'invoice-1234.pdf', content: 'JVBERi0xLjQK' },
+        { filename: 'receipt-1234.pdf', content: 'JVBERi0xLjUK' },
+      ],
+    });
+  });
+
+  it('does not include attachments key when attachments not provided', async () => {
+    mockSend.mockResolvedValue({ data: { id: 'msg-no-att' }, error: null });
+
+    await sendEmail('user@example.com', 'Plain', '<p>Body</p>', config);
+
+    const callArgs = mockSend.mock.calls[0][0];
+    expect(callArgs).not.toHaveProperty('attachments');
+  });
 });

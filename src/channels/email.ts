@@ -5,9 +5,15 @@ import type { DispatchResult } from './dispatcher.js';
 
 const logger = createLogger('email');
 
+export interface EmailAttachment {
+  filename: string;
+  content: string;
+}
+
 export interface EmailConfig {
   apiKey: string;
   from: string;
+  attachments?: EmailAttachment[];
 }
 
 export async function sendEmail(
@@ -19,12 +25,24 @@ export async function sendEmail(
   const resend = new Resend(config.apiKey);
 
   try {
-    const { data, error } = await resend.emails.send({
+    const sendPayload: {
+      from: string;
+      to: string;
+      subject: string;
+      html: string;
+      attachments?: EmailAttachment[];
+    } = {
       from: config.from,
       to,
       subject: subject ?? '',
       html: body,
-    });
+    };
+
+    if (config.attachments && config.attachments.length > 0) {
+      sendPayload.attachments = config.attachments;
+    }
+
+    const { data, error } = await resend.emails.send(sendPayload);
 
     if (error) {
       logger.error({ to, error: error.message }, 'email send failed');
