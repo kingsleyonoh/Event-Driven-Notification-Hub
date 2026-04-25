@@ -32,6 +32,12 @@ export interface DispatchConfig {
    * soft-fails individual headers (skip + warn) before reaching here.
    */
   headers?: Record<string, string>;
+  /**
+   * Phase 7 H8 — rendered plain-text body fallback (from `templates.body_text`).
+   * Forwarded to Resend's `text` field; when undefined/empty Resend
+   * auto-generates the text alternative from the HTML body.
+   */
+  text?: string;
 }
 
 export async function dispatch(
@@ -55,6 +61,9 @@ export async function dispatch(
             : {}),
           ...(config?.headers && Object.keys(config.headers).length > 0
             ? { headers: config.headers }
+            : {}),
+          ...(config?.text && config.text.length > 0
+            ? { text: config.text }
             : {}),
         };
         // Strip replyTo if undefined so EmailConfig doesn't carry an explicit `replyTo: undefined`

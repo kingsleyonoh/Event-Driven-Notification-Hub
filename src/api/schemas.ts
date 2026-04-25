@@ -108,6 +108,9 @@ export const createTemplateSchema = z.object({
   channel: channelEnum,
   subject: z.string().optional(),
   body: z.string().min(1),
+  // Phase 7 H8 — optional plain-text body for non-HTML clients. When omitted,
+  // Resend auto-generates a text alternative from the HTML body.
+  body_text: z.string().nullable().optional(),
   attachments_config: attachmentsConfigSchema,
   reply_to: z.string().email().nullable().optional(),
   headers: headersSchema,
@@ -118,6 +121,7 @@ export const updateTemplateSchema = z.object({
   channel: channelEnum.optional(),
   subject: z.string().optional(),
   body: z.string().min(1).optional(),
+  body_text: z.string().nullable().optional(),
   attachments_config: attachmentsConfigSchema,
   reply_to: z.string().email().nullable().optional(),
   headers: headersSchema,

@@ -163,6 +163,55 @@ describe('sendEmail', () => {
     expect(callArgs).not.toHaveProperty('headers');
   });
 
+  it('forwards both html and text to Resend when text param is provided (Phase 7 H8)', async () => {
+    mockSend.mockResolvedValue({ data: { id: 'msg-text-1' }, error: null });
+
+    const configWithText: EmailConfig = {
+      ...config,
+      text: 'Plain text body for non-HTML clients',
+    };
+
+    const result = await sendEmail(
+      'user@example.com',
+      'Plain fallback',
+      '<p>HTML body</p>',
+      configWithText,
+    );
+
+    expect(result.success).toBe(true);
+    expect(mockSend).toHaveBeenCalledWith({
+      from: 'noreply@test.com',
+      to: 'user@example.com',
+      subject: 'Plain fallback',
+      html: '<p>HTML body</p>',
+      text: 'Plain text body for non-HTML clients',
+    });
+  });
+
+  it('does not include text key when text not provided or empty (Phase 7 H8)', async () => {
+    // Case 1: text not provided
+    mockSend.mockResolvedValue({ data: { id: 'msg-text-2' }, error: null });
+
+    await sendEmail('user@example.com', 'No text', '<p>Body</p>', config);
+
+    let callArgs = mockSend.mock.calls[0][0];
+    expect(callArgs).not.toHaveProperty('text');
+
+    // Case 2: empty string text → omitted
+    mockSend.mockReset();
+    mockSend.mockResolvedValue({ data: { id: 'msg-text-3' }, error: null });
+
+    await sendEmail(
+      'user@example.com',
+      'Empty text',
+      '<p>Body</p>',
+      { ...config, text: '' },
+    );
+
+    callArgs = mockSend.mock.calls[0][0];
+    expect(callArgs).not.toHaveProperty('text');
+  });
+
   it('forwards replyTo to Resend when set; omits when absent', async () => {
     // Case 1: replyTo set on EmailConfig → Resend call payload includes replyTo
     mockSend.mockResolvedValue({ data: { id: 'msg-rt-1' }, error: null });

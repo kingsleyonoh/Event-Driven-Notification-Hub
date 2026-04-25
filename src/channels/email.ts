@@ -17,6 +17,13 @@ export interface EmailConfig {
   attachments?: EmailAttachment[];
   headers?: Record<string, string>;
   /**
+   * Phase 7 H8 — optional plain-text alternative body forwarded to Resend's
+   * `text` field. When omitted (or empty), Resend auto-generates the text
+   * alternative from the HTML body. Pipeline only sets this when the
+   * template's `body_text` column is non-null.
+   */
+  text?: string;
+  /**
    * Phase 7 H5 — when true, the Hub logs the outgoing email at info level
    * (subject + recipient + body excerpt) and SKIPS the Resend send. Used
    * by tenants in dev/staging to exercise the pipeline without delivering
@@ -73,6 +80,7 @@ export async function sendEmail(
       to: string;
       subject: string;
       html: string;
+      text?: string;
       replyTo?: string;
       attachments?: EmailAttachment[];
       headers?: Record<string, string>;
@@ -82,6 +90,12 @@ export async function sendEmail(
       subject: subject ?? '',
       html: body,
     };
+
+    // Phase 7 H8 — plain-text fallback. Only set when caller supplied a
+    // non-empty string; empty/undefined → omit so Resend auto-generates.
+    if (config.text !== undefined && config.text.length > 0) {
+      sendPayload.text = config.text;
+    }
 
     if (config.replyTo) {
       sendPayload.replyTo = config.replyTo;

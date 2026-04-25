@@ -141,6 +141,20 @@ export async function processNotification(
     tmpl.subject, tmpl.body, payload,
   );
 
+  // Phase 7 H8 — render plain-text fallback for email when body_text set.
+  let renderedBodyText: string | undefined;
+  if (rule.channel === 'email' && tmpl.bodyText && tmpl.bodyText.length > 0) {
+    try {
+      renderedBodyText = renderTemplate(tmpl.bodyText, payload);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'body_text render failed';
+      logger.warn(
+        { eventId, recipient, error: errMsg },
+        'body_text render failed — falling back to Resend auto-generated text',
+      );
+    }
+  }
+
   // 7. Insert notification
   const [notif] = await db
     .insert(notifications)
@@ -212,6 +226,7 @@ export async function processNotification(
     ...(rule.channel === 'email' && tmpl.replyTo ? { templateReplyTo: tmpl.replyTo } : {}),
     ...(eventReplyTo ? { eventReplyTo } : {}),
     ...(renderedHeaders ? { headers: renderedHeaders } : {}),
+    ...(renderedBodyText ? { text: renderedBodyText } : {}),
   };
   const result = await dispatch(rule.channel, deliveryAddress, renderedSubject, renderedBody, {
     tenantId, notificationId: notif.id, eventType,
