@@ -1,6 +1,6 @@
 import fp from 'fastify-plugin';
 import { and, eq } from 'drizzle-orm';
-import { emailDeliveryEvents, notifications } from '../db/schema.js';
+import { emailDeliveryEvents, notifications, tenantSuppressions } from '../db/schema.js';
 import { verifyResendSignature } from './webhooks-resend-verify.js';
 import {
   dispatchDeliveryCallback,
@@ -127,6 +127,34 @@ export const webhookRoutes = fp<WebhookRoutesOptions>(async (app, opts) => {
       await applyNotificationStateFromEvent(db, tenantId, notificationId, eventType, body);
     }
 
+    // Phase 7 H10 — auto-add to tenant_suppressions on hard bounce / complaint.
+    // Idempotent via UNIQUE(tenant_id, recipient) + ON CONFLICT DO NOTHING.
+    const suppressionReason = suppressionReasonFor(eventType, body);
+    if (suppressionReason) {
+      const recipient = await resolveBounceRecipient(db, tenantId, notificationId, body);
+      if (recipient) {
+        await db
+          .insert(tenantSuppressions)
+          .values({
+            tenantId,
+            recipient: recipient.toLowerCase(),
+            reason: suppressionReason,
+          })
+          .onConflictDoNothing({
+            target: [tenantSuppressions.tenantId, tenantSuppressions.recipient],
+          });
+        logger.info(
+          { tenantId, recipient, reason: suppressionReason },
+          'tenant_suppressions row inserted (or kept) from webhook',
+        );
+      } else {
+        logger.warn(
+          { tenantId, eventType, notificationId },
+          'cannot resolve recipient for suppression — skipping',
+        );
+      }
+    }
+
     // Fire-and-forget callback dispatch — never await; never block the 200.
     const callbackEvent: DeliveryCallbackEvent = {
       event_type: eventType,
@@ -193,6 +221,68 @@ async function applyNotificationStateFromEvent(
     .update(notifications)
     .set(updates)
     .where(and(eq(notifications.tenantId, tenantId), eq(notifications.id, notificationId)));
+}
+
+/**
+ * Phase 7 H10 — decide whether the webhook event should auto-add the recipient
+ * to the tenant suppression list.
+ *
+ * - `email.bounced` is suppressed ONLY when the bounce is "hard" (per Resend's
+ *   `data.bounce.type` or `data.bounce_type`). Soft bounces are transient.
+ *   We treat `'hard'` and any string starting with `hard_` as hard.
+ * - `email.complained` always suppresses (recipient marked the email as spam).
+ *
+ * Returns the suppression reason string, or null when the event should NOT
+ * trigger a suppression.
+ */
+function suppressionReasonFor(
+  eventType: string,
+  body: ResendWebhookPayload,
+): 'hard_bounce' | 'complaint' | null {
+  if (eventType === 'email.complained') return 'complaint';
+  if (eventType === 'email.bounced') {
+    const bounceType = extractBounceType(body) ?? '';
+    const lower = bounceType.toLowerCase();
+    if (lower === 'hard' || lower.startsWith('hard')) return 'hard_bounce';
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Resolve the recipient email for a bounce/complaint webhook. Tries:
+ * 1. The `data.to` field on the Resend payload (string or first array entry).
+ * 2. The notification row's `recipient` (looked up via the X-Hub-Notification-ID
+ *    header). Tenant-scoped to prevent cross-tenant reads.
+ */
+async function resolveBounceRecipient(
+  db: Database,
+  tenantId: string,
+  notificationId: string | null,
+  body: ResendWebhookPayload,
+): Promise<string | null> {
+  const data = body.data as Record<string, unknown> | undefined;
+  if (data) {
+    const to = data.to;
+    if (typeof to === 'string' && to.length > 0) return to;
+    if (Array.isArray(to) && to.length > 0 && typeof to[0] === 'string') {
+      return to[0] as string;
+    }
+  }
+  if (notificationId) {
+    const [row] = await db
+      .select({ recipient: notifications.recipient })
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.tenantId, tenantId),
+          eq(notifications.id, notificationId),
+        ),
+      )
+      .limit(1);
+    if (row?.recipient) return row.recipient;
+  }
+  return null;
 }
 
 function extractBounceType(body: ResendWebhookPayload): string | null {

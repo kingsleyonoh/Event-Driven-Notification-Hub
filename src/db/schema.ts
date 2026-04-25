@@ -216,6 +216,37 @@ export const emailDeliveryEvents = pgTable(
   ],
 );
 
+// ─── Tenant Suppressions (Section 13 Phase 7 H10) ───────────────────
+// Per-tenant suppression list — a pre-dispatch guard for email/sms/telegram.
+// `recipient` is stored lowercased and queried case-insensitively. `expires_at`
+// NULL means permanent suppression. Auto-populated on hard bounces / complaints
+// from the Resend webhook, plus manual entries via the suppressions API.
+
+export const tenantSuppressions = pgTable(
+  'tenant_suppressions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    recipient: text('recipient').notNull(),
+    reason: text('reason').notNull(),
+    expiresAt: timestamp('expires_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    unique('tenant_suppressions_tenant_recipient_unique').on(
+      table.tenantId,
+      table.recipient,
+    ),
+    index('tenant_suppressions_lookup_idx').on(
+      table.tenantId,
+      table.recipient,
+      table.expiresAt,
+    ),
+  ],
+);
+
 // ─── Heartbeats (Section 4.7) ───────────────────────────────────────
 
 export const heartbeats = pgTable(

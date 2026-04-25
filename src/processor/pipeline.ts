@@ -1,5 +1,5 @@
-import { eq } from 'drizzle-orm';
-import { notifications, digestQueue, templates } from '../db/schema.js';
+import { eq, and, or, isNull, gt, sql as sqlOp } from 'drizzle-orm';
+import { notifications, digestQueue, templates, tenantSuppressions } from '../db/schema.js';
 import { resolveDeliveryAddress, checkOptOut, isWithinQuietHours } from './preferences.js';
 import { isDuplicate } from './deduplicator.js';
 import { renderSubjectAndBody, renderTemplate } from '../templates/renderer.js';
@@ -89,6 +89,20 @@ export async function processNotification(
     });
     logger.info({ eventId, recipient }, 'skipped — deduplicated');
     return;
+  }
+
+  // 3.5 Suppression check (Phase 7 H10) — pre-dispatch guard for email/sms/telegram.
+  // in_app uses userId, not an addressable contact — suppression doesn't apply there.
+  if (rule.channel !== 'in_app') {
+    const suppressed = await isSuppressed(db, tenantId, deliveryAddress);
+    if (suppressed) {
+      await insertNotification(db, {
+        tenantId, ruleId: rule.id, eventType, eventId, recipient,
+        channel: rule.channel, status: 'skipped', skipReason: 'suppressed',
+      });
+      logger.info({ eventId, recipient, deliveryAddress }, 'skipped — suppressed');
+      return;
+    }
   }
 
   // 4. Quiet hours check
@@ -255,6 +269,30 @@ export async function processNotification(
       .set({ status: 'failed', errorMessage: result.error ?? 'dispatch failed' })
       .where(eq(notifications.id, notif.id));
   }
+}
+
+/**
+ * Per-tenant suppression check. Returns true if the recipient is suppressed
+ * (and the suppression hasn't expired). Recipient comparison is case-insensitive.
+ */
+async function isSuppressed(
+  db: Database,
+  tenantId: string,
+  recipient: string,
+): Promise<boolean> {
+  const now = new Date();
+  const [hit] = await db
+    .select({ id: tenantSuppressions.id })
+    .from(tenantSuppressions)
+    .where(
+      and(
+        eq(tenantSuppressions.tenantId, tenantId),
+        sqlOp`lower(${tenantSuppressions.recipient}) = lower(${recipient})`,
+        or(isNull(tenantSuppressions.expiresAt), gt(tenantSuppressions.expiresAt, now)),
+      ),
+    )
+    .limit(1);
+  return Boolean(hit);
 }
 
 function isDirectAddress(value: string, channel: string): boolean {
