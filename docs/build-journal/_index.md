@@ -6,7 +6,7 @@
 
 | Batch | File | Summary |
 |-------|------|---------|
-| — | — | Populated per batch by `yolo-subagent-journal`. |
+| 006 | `006-batch.md` | Phase 7 H1 foundation — `templates.attachments_config` column, Zod schema, `fetchAttachments()` module + 14 tests. |
 
 ## How batch files are written
 

@@ -13,6 +13,7 @@
 | `005-zod-validation.md` | All inputs validated at the route boundary via Zod v4 schemas in `src/api/schemas.ts`. |
 | `006-cursor-pagination.md` | Notification listings use opaque `created_at+id` cursor pagination, not offset/limit. |
 | `007-tenant-channel-config.md` | Channel credentials resolved via `resolveTenantChannelConfig()` from `tenants.config` JSONB, never read inline. |
+| `008-typed-error-detail.md` | AppError subclasses can carry typed structured metadata via a `<domainDetails>` instance field, while keeping the `details: [json_string]` wire shape. |
 | `EXAMPLE.md` | Template showing the expected shape — delete once a real pattern exists. |
 
 ## How to add a new pattern
