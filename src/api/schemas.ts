@@ -53,11 +53,25 @@ export const updateRuleSchema = z.object({
 
 // ─── Templates ───────────────────────────────────────────────────────
 
+// Per-attachment config — strict so unknown keys are rejected
+export const attachmentConfigEntrySchema = z
+  .object({
+    filename_template: z.string().min(1),
+    url_field: z.string().min(1),
+  })
+  .strict();
+
+export const attachmentsConfigSchema = z
+  .array(attachmentConfigEntrySchema)
+  .nullable()
+  .optional();
+
 export const createTemplateSchema = z.object({
   name: z.string().min(1),
   channel: channelEnum,
   subject: z.string().optional(),
   body: z.string().min(1),
+  attachments_config: attachmentsConfigSchema,
 });
 
 export const updateTemplateSchema = z.object({
@@ -65,6 +79,7 @@ export const updateTemplateSchema = z.object({
   channel: channelEnum.optional(),
   subject: z.string().optional(),
   body: z.string().min(1).optional(),
+  attachments_config: attachmentsConfigSchema,
 });
 
 export const previewTemplateSchema = z.object({

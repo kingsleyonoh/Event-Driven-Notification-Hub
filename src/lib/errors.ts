@@ -46,6 +46,21 @@ export class InternalError extends AppError {
   }
 }
 
+export interface AttachmentFetchErrorDetails {
+  failed_url: string | null;
+  reason: string;
+  attempted_retries: number;
+}
+
+export class AttachmentFetchError extends AppError {
+  public readonly attachmentDetails: AttachmentFetchErrorDetails;
+
+  constructor(message: string, details: AttachmentFetchErrorDetails) {
+    super('ATTACHMENT_FETCH_ERROR', message, 500, [JSON.stringify(details)]);
+    this.attachmentDetails = details;
+  }
+}
+
 export interface ErrorResponse {
   error: {
     code: string;

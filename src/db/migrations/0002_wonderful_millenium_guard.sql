@@ -1,0 +1,1 @@
+ALTER TABLE "templates" ADD COLUMN "attachments_config" jsonb;

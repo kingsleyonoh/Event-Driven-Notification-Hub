@@ -20,7 +20,7 @@ export const templatesRoutes = fp<TemplatesRoutesOptions>(async (app, opts) => {
       throw new ValidationError('Invalid template data', parsed.error.issues.map((i) => i.message));
     }
 
-    const { name, channel, subject, body } = parsed.data;
+    const { name, channel, subject, body, attachments_config } = parsed.data;
 
     try {
       const [template] = await db
@@ -31,6 +31,7 @@ export const templatesRoutes = fp<TemplatesRoutesOptions>(async (app, opts) => {
           channel,
           subject,
           body,
+          attachmentsConfig: attachments_config ?? null,
         })
         .returning();
 
@@ -86,6 +87,9 @@ export const templatesRoutes = fp<TemplatesRoutesOptions>(async (app, opts) => {
     if (data.channel !== undefined) updates.channel = data.channel;
     if (data.subject !== undefined) updates.subject = data.subject;
     if (data.body !== undefined) updates.body = data.body;
+    if (data.attachments_config !== undefined) {
+      updates.attachmentsConfig = data.attachments_config;
+    }
     updates.updatedAt = new Date();
 
     const [template] = await db

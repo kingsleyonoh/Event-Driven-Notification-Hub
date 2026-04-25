@@ -15,6 +15,13 @@
       "when": 1775554422208,
       "tag": "0001_friendly_psylocke",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777145946023,
+      "tag": "0002_wonderful_millenium_guard",
+      "breakpoints": true
     }
   ]
 }
