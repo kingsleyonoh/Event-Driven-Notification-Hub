@@ -7,6 +7,7 @@
 | Batch | File | Summary |
 |-------|------|---------|
 | 006 | `006-batch.md` | Phase 7 H1 foundation — `templates.attachments_config` column, Zod schema, `fetchAttachments()` module + 14 tests. |
+| 007 | `007-batch.md` | Phase 7 H1 wiring — `EmailConfig.attachments` + pipeline `fetchAttachments()` call + 4 integration tests. H1 COMPLETE. |
 
 ## How batch files are written
 
