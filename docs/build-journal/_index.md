@@ -14,6 +14,7 @@
 | 011 | `011-batch.md` | Phase 7 H4 part 1 — `email_delivery_events` table, `tenants.delivery_callback_secret`, signing module. Pattern 010 (HMAC outbound callback). |
 | 012 | `012-batch.md` | Phase 7 H4 part 2 — `POST /api/webhooks/resend`, Svix sig verify, X-Hub-* metadata round-trip, admin mints `delivery_callback_secret`. |
 | 013 | `013-batch.md` | Phase 7 H4 part 3 — webhook integration tests + USER_SETUP docs. **H4 COMPLETE. Ship-gate CRITICAL/HIGH set DONE (H1+H2+H3+H4).** |
+| 014 | `014-batch.md` | Phase 7 H5 — sandbox mode per tenant. Status CHECK widened to `sent_sandbox`. **H5 COMPLETE.** Gotcha: drizzle-text-enum-no-check-constraint. |
 
 ## How batch files are written
 
