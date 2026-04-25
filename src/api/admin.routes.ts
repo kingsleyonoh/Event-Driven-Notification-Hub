@@ -2,7 +2,11 @@ import crypto from 'node:crypto';
 import fp from 'fastify-plugin';
 import { eq } from 'drizzle-orm';
 import { tenants } from '../db/schema.js';
-import { createTenantSchema, updateTenantSchema } from './schemas.js';
+import {
+  createTenantSchema,
+  updateTenantSchema,
+  updateTenantRateLimitSchema,
+} from './schemas.js';
 import { ValidationError, NotFoundError } from '../lib/errors.js';
 import type { Database } from '../db/client.js';
 
@@ -148,6 +152,53 @@ export const adminRoutes = fp<AdminRoutesOptions>(async (app, opts) => {
     if (!tenant) {
       throw new NotFoundError(`Tenant ${request.params.id} not found`);
     }
+
+    return { tenant: sanitizeTenant(tenant as unknown as Record<string, unknown>) };
+  });
+
+  // PATCH /api/admin/tenants/:id/rate-limit — Phase 7 H7
+  // Updates `tenants.config.rate_limits.events_per_minute` while
+  // preserving the rest of `tenants.config`. Rate-limited modestly
+  // because it's an admin-only mutation that shouldn't be hot-pathed.
+  app.patch<{ Params: { id: string } }>('/api/admin/tenants/:id/rate-limit', {
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (request) => {
+    const parsed = updateTenantRateLimitSchema.safeParse(request.body);
+    if (!parsed.success) {
+      throw new ValidationError(
+        'Invalid rate-limit data',
+        parsed.error.issues.map((i) => i.message),
+      );
+    }
+
+    // Load existing tenant config to preserve unrelated keys.
+    const [existing] = await db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.id, request.params.id));
+
+    if (!existing) {
+      throw new NotFoundError(`Tenant ${request.params.id} not found`);
+    }
+
+    const currentConfig =
+      (existing.config as Record<string, unknown> | null) ?? {};
+    const currentRateLimits =
+      (currentConfig.rate_limits as Record<string, unknown> | undefined) ?? {};
+
+    const nextConfig: Record<string, unknown> = {
+      ...currentConfig,
+      rate_limits: {
+        ...currentRateLimits,
+        events_per_minute: parsed.data.events_per_minute,
+      },
+    };
+
+    const [tenant] = await db
+      .update(tenants)
+      .set({ config: nextConfig, updatedAt: new Date() })
+      .where(eq(tenants.id, request.params.id))
+      .returning();
 
     return { tenant: sanitizeTenant(tenant as unknown as Record<string, unknown>) };
   });

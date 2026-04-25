@@ -189,6 +189,117 @@ describe('Admin Tenants API — CRUD', () => {
     expect(body.tenant.enabled).toBe(false);
   });
 
+  it('PATCH /api/admin/tenants/:id/rate-limit — updates events_per_minute (Phase 7 H7)', async () => {
+    const app = await buildTestApp();
+    // Create a tenant for rate-limit patching
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/admin/tenants',
+      headers: adminHeaders(),
+      payload: { name: 'RL Patch Tenant' },
+    });
+    const tenantId = createRes.json().tenant.id;
+    createdTenantIds.push(tenantId);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/tenants/${tenantId}/rate-limit`,
+      headers: adminHeaders(),
+      payload: { events_per_minute: 50 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.tenant.config.rate_limits.events_per_minute).toBe(50);
+    // Sanitizer must still strip secrets
+    expect(body.tenant.deliveryCallbackSecret).toBeUndefined();
+  });
+
+  it('PATCH /api/admin/tenants/:id/rate-limit — preserves other config keys', async () => {
+    const app = await buildTestApp();
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/admin/tenants',
+      headers: adminHeaders(),
+      payload: {
+        name: 'RL Preserve Tenant',
+        config: { dedup_window: 30, channels: { email: { apiKey: 'k', from: 'f@x.com' } } },
+      },
+    });
+    const tenantId = createRes.json().tenant.id;
+    createdTenantIds.push(tenantId);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/tenants/${tenantId}/rate-limit`,
+      headers: adminHeaders(),
+      payload: { events_per_minute: 75 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.tenant.config.rate_limits.events_per_minute).toBe(75);
+    expect(body.tenant.config.dedup_window).toBe(30);
+    // Channels preserved (secrets redacted by sanitizer)
+    expect(body.tenant.config.channels?.email).toBeDefined();
+  });
+
+  it('PATCH /api/admin/tenants/:id/rate-limit — rejects events_per_minute below 1', async () => {
+    const app = await buildTestApp();
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/admin/tenants',
+      headers: adminHeaders(),
+      payload: { name: 'RL Range Tenant' },
+    });
+    const tenantId = createRes.json().tenant.id;
+    createdTenantIds.push(tenantId);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/tenants/${tenantId}/rate-limit`,
+      headers: adminHeaders(),
+      payload: { events_per_minute: 0 },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('PATCH /api/admin/tenants/:id/rate-limit — rejects events_per_minute above 1000', async () => {
+    const app = await buildTestApp();
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/admin/tenants',
+      headers: adminHeaders(),
+      payload: { name: 'RL Cap Tenant' },
+    });
+    const tenantId = createRes.json().tenant.id;
+    createdTenantIds.push(tenantId);
+
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `/api/admin/tenants/${tenantId}/rate-limit`,
+      headers: adminHeaders(),
+      payload: { events_per_minute: 1001 },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('PATCH /api/admin/tenants/:id/rate-limit — 404 for unknown tenant', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/admin/tenants/nonexistent-tenant/rate-limit',
+      headers: adminHeaders(),
+      payload: { events_per_minute: 50 },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
   it('DELETE /api/admin/tenants/:id — removes tenant', async () => {
     // Create a tenant specifically for deletion
     const app = await buildTestApp();

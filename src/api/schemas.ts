@@ -157,6 +157,17 @@ export const publishEventSchema = z.object({
 
 // ─── Admin Tenants ───────────────────────────────────────────────────
 
+// Phase 7 H7 — Per-tenant rate-limit overrides on `tenants.config.rate_limits`.
+// Stored on the freeform `config` JSONB; surfaced via PATCH /api/admin/tenants/:id/rate-limit.
+// Range 1–1000 enforced at the API boundary; the resolver caps defensively.
+export const rateLimitsConfigSchema = z.object({
+  events_per_minute: z.number().int().min(1).max(1000),
+});
+
+export const updateTenantRateLimitSchema = z.object({
+  events_per_minute: z.number().int().min(1).max(1000),
+});
+
 export const createTenantSchema = z.object({
   name: z.string().min(1),
   config: z.record(z.string(), z.unknown()).optional(),
