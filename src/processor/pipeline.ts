@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { notifications, digestQueue, templates } from '../db/schema.js';
 import { resolveDeliveryAddress, checkOptOut, isWithinQuietHours } from './preferences.js';
 import { isDuplicate } from './deduplicator.js';
-import { renderSubjectAndBody } from '../templates/renderer.js';
+import { renderSubjectAndBody, renderTemplate } from '../templates/renderer.js';
 import { computeScheduledFor } from '../lib/scheduling.js';
 import { dispatch, type DispatchConfig } from '../channels/dispatcher.js';
 import { fetchAttachments } from '../channels/attachments.js';
@@ -180,6 +180,26 @@ export async function processNotification(
     }
   }
 
+  // 7c. Render custom email headers (email channel only) — soft-fail per header
+  let renderedHeaders: Record<string, string> | undefined;
+  if (rule.channel === 'email' && tmpl.headers && Object.keys(tmpl.headers).length > 0) {
+    const out: Record<string, string> = {};
+    for (const [name, valueTemplate] of Object.entries(tmpl.headers)) {
+      try {
+        out[name] = renderTemplate(valueTemplate, payload);
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : 'header render failed';
+        logger.warn(
+          { eventId, recipient, notificationId: notif.id, headerName: name, error: errMsg },
+          'header value render failed — skipping this header, continuing dispatch',
+        );
+      }
+    }
+    if (Object.keys(out).length > 0) {
+      renderedHeaders = out;
+    }
+  }
+
   // 8. Dispatch — assemble three-layer reply_to inputs (email channel only)
   const eventReplyTo =
     rule.channel === 'email' && typeof payload?._reply_to === 'string'
@@ -191,6 +211,7 @@ export async function processNotification(
     ...(emailAttachments ? { attachments: emailAttachments } : {}),
     ...(rule.channel === 'email' && tmpl.replyTo ? { templateReplyTo: tmpl.replyTo } : {}),
     ...(eventReplyTo ? { eventReplyTo } : {}),
+    ...(renderedHeaders ? { headers: renderedHeaders } : {}),
   };
   const result = await dispatch(rule.channel, deliveryAddress, renderedSubject, renderedBody, {
     tenantId, notificationId: notif.id, eventType,

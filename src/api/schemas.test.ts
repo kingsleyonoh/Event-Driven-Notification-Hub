@@ -130,3 +130,101 @@ describe('updateTemplateSchema — attachments_config', () => {
     expect(result.success).toBe(true);
   });
 });
+
+describe('createTemplateSchema — headers (RFC 8058 List-Unsubscribe)', () => {
+  const valid = {
+    name: 'newsletter',
+    channel: 'email',
+    body: 'Body',
+  };
+
+  it('accepts a valid headers map with List-Unsubscribe', () => {
+    const result = createTemplateSchema.safeParse({
+      ...valid,
+      headers: {
+        'List-Unsubscribe': '<{{unsub_url}}>',
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.headers).toEqual({
+        'List-Unsubscribe': '<{{unsub_url}}>',
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      });
+    }
+  });
+
+  it('accepts a payload without headers', () => {
+    const result = createTemplateSchema.safeParse(valid);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts headers = null (clears headers)', () => {
+    const result = createTemplateSchema.safeParse({ ...valid, headers: null });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects forbidden header name Content-Type (Resend manages it)', () => {
+    const result = createTemplateSchema.safeParse({
+      ...valid,
+      headers: { 'Content-Type': 'text/html' },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const msg = result.error.issues.map((i) => i.message).join(' ');
+      expect(msg).toMatch(/Content-Type/i);
+      expect(msg).toMatch(/reserved/i);
+    }
+  });
+
+  it('rejects malformed header name with space (violates RFC-822 regex)', () => {
+    const result = createTemplateSchema.safeParse({
+      ...valid,
+      headers: { 'X-Bad Header': 'val' },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects forbidden header name From (case-insensitive match)', () => {
+    const result = createTemplateSchema.safeParse({
+      ...valid,
+      headers: { 'From': 'x@y.com' },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const msg = result.error.issues.map((i) => i.message).join(' ');
+      expect(msg).toMatch(/From/i);
+      expect(msg).toMatch(/reserved/i);
+    }
+  });
+
+  it('rejects empty header value', () => {
+    const result = createTemplateSchema.safeParse({
+      ...valid,
+      headers: { 'X-Custom': '' },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('updateTemplateSchema — headers', () => {
+  it('accepts headers on update', () => {
+    const result = updateTemplateSchema.safeParse({
+      headers: { 'X-Client-Id': '{{client_id}}' },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts headers = null on update (clears headers)', () => {
+    const result = updateTemplateSchema.safeParse({ headers: null });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects forbidden header name on update', () => {
+    const result = updateTemplateSchema.safeParse({
+      headers: { 'Subject': 'override attempt' },
+    });
+    expect(result.success).toBe(false);
+  });
+});

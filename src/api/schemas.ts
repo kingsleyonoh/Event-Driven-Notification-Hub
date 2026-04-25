@@ -67,6 +67,31 @@ export const attachmentsConfigSchema = z
   .nullable()
   .optional();
 
+// ─── Custom email headers (RFC 8058 List-Unsubscribe support) ───────
+//
+// Header names must match RFC-822 token (`A-Z`, `a-z`, `0-9`, `-`).
+// Values are Handlebars template strings (rendered per-event).
+// Reserved names that Resend manages — overriding could break delivery.
+const RESERVED_HEADER_NAMES = ['content-type', 'from', 'to', 'subject'] as const;
+const HEADER_NAME_REGEX = /^[A-Za-z0-9-]+$/;
+
+export const headersSchema = z
+  .record(z.string().regex(HEADER_NAME_REGEX), z.string().min(1))
+  .nullable()
+  .optional()
+  .superRefine((val, ctx) => {
+    if (val == null) return;
+    for (const name of Object.keys(val)) {
+      if (RESERVED_HEADER_NAMES.includes(name.toLowerCase() as (typeof RESERVED_HEADER_NAMES)[number])) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `Header name '${name}' is reserved by Resend; cannot override`,
+          path: [name],
+        });
+      }
+    }
+  });
+
 export const createTemplateSchema = z.object({
   name: z.string().min(1),
   channel: channelEnum,
@@ -74,6 +99,7 @@ export const createTemplateSchema = z.object({
   body: z.string().min(1),
   attachments_config: attachmentsConfigSchema,
   reply_to: z.string().email().nullable().optional(),
+  headers: headersSchema,
 });
 
 export const updateTemplateSchema = z.object({
@@ -83,6 +109,7 @@ export const updateTemplateSchema = z.object({
   body: z.string().min(1).optional(),
   attachments_config: attachmentsConfigSchema,
   reply_to: z.string().email().nullable().optional(),
+  headers: headersSchema,
 });
 
 export const previewTemplateSchema = z.object({

@@ -38,6 +38,7 @@ export const templates = pgTable(
     attachmentsConfig: jsonb('attachments_config').$type<
       Array<{ filename_template: string; url_field: string }>
     >(),
+    headers: jsonb('headers').$type<Record<string, string>>(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

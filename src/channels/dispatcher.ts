@@ -20,6 +20,12 @@ export interface DispatchConfig {
   templateReplyTo?: string | null;
   /** Event-level reply_to (from event payload `_reply_to`, if present). */
   eventReplyTo?: string | null;
+  /**
+   * Custom email headers — already rendered through Handlebars by the
+   * pipeline. Forwarded directly to Resend's `headers` field. Pipeline
+   * soft-fails individual headers (skip + warn) before reaching here.
+   */
+  headers?: Record<string, string>;
 }
 
 export async function dispatch(
@@ -40,6 +46,9 @@ export async function dispatch(
           ...(resolvedReplyTo !== undefined ? { replyTo: resolvedReplyTo } : { replyTo: undefined }),
           ...(config?.attachments && config.attachments.length > 0
             ? { attachments: config.attachments }
+            : {}),
+          ...(config?.headers && Object.keys(config.headers).length > 0
+            ? { headers: config.headers }
             : {}),
         };
         // Strip replyTo if undefined so EmailConfig doesn't carry an explicit `replyTo: undefined`

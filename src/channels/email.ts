@@ -15,6 +15,7 @@ export interface EmailConfig {
   from: string;
   replyTo?: string;
   attachments?: EmailAttachment[];
+  headers?: Record<string, string>;
 }
 
 export async function sendEmail(
@@ -33,6 +34,7 @@ export async function sendEmail(
       html: string;
       replyTo?: string;
       attachments?: EmailAttachment[];
+      headers?: Record<string, string>;
     } = {
       from: config.from,
       to,
@@ -46,6 +48,10 @@ export async function sendEmail(
 
     if (config.attachments && config.attachments.length > 0) {
       sendPayload.attachments = config.attachments;
+    }
+
+    if (config.headers && Object.keys(config.headers).length > 0) {
+      sendPayload.headers = config.headers;
     }
 
     const { data, error } = await resend.emails.send(sendPayload);

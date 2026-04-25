@@ -109,6 +109,60 @@ describe('sendEmail', () => {
     expect(callArgs).not.toHaveProperty('attachments');
   });
 
+  it('forwards headers to Resend when provided; omits when absent or empty', async () => {
+    // Case 1: headers set on EmailConfig → Resend payload includes headers
+    mockSend.mockResolvedValue({ data: { id: 'msg-h-1' }, error: null });
+
+    const configWithHeaders: EmailConfig = {
+      ...config,
+      headers: {
+        'List-Unsubscribe': '<https://x.com/u/abc>',
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      },
+    };
+
+    await sendEmail(
+      'user@example.com',
+      'Newsletter',
+      '<p>Body</p>',
+      configWithHeaders,
+    );
+
+    expect(mockSend).toHaveBeenCalledWith({
+      from: 'noreply@test.com',
+      to: 'user@example.com',
+      subject: 'Newsletter',
+      html: '<p>Body</p>',
+      headers: {
+        'List-Unsubscribe': '<https://x.com/u/abc>',
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      },
+    });
+
+    // Case 2: headers absent → no headers key in payload
+    mockSend.mockReset();
+    mockSend.mockResolvedValue({ data: { id: 'msg-h-2' }, error: null });
+
+    await sendEmail('user@example.com', 'No headers', '<p>Body</p>', config);
+
+    let callArgs = mockSend.mock.calls[0][0];
+    expect(callArgs).not.toHaveProperty('headers');
+
+    // Case 3: empty headers map → no headers key in payload
+    mockSend.mockReset();
+    mockSend.mockResolvedValue({ data: { id: 'msg-h-3' }, error: null });
+
+    await sendEmail(
+      'user@example.com',
+      'Empty headers',
+      '<p>Body</p>',
+      { ...config, headers: {} },
+    );
+
+    callArgs = mockSend.mock.calls[0][0];
+    expect(callArgs).not.toHaveProperty('headers');
+  });
+
   it('forwards replyTo to Resend when set; omits when absent', async () => {
     // Case 1: replyTo set on EmailConfig → Resend call payload includes replyTo
     mockSend.mockResolvedValue({ data: { id: 'msg-rt-1' }, error: null });
