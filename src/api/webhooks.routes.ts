@@ -1,4 +1,4 @@
-import fp from 'fastify-plugin';
+import type { FastifyPluginAsync } from 'fastify';
 import { and, eq } from 'drizzle-orm';
 import { emailDeliveryEvents, notifications, tenantSuppressions } from '../db/schema.js';
 import { verifyResendSignature } from './webhooks-resend-verify.js';
@@ -41,9 +41,17 @@ interface ResendWebhookPayload {
  * PUBLIC route — no `X-API-Key`. Signature verified per-request via
  * `verifyResendSignature` against `RESEND_WEBHOOK_SECRET`.
  */
-export const webhookRoutes = fp<WebhookRoutesOptions>(async (app, opts) => {
+export const webhookRoutes: FastifyPluginAsync<WebhookRoutesOptions> = async (app, opts) => {
   const { db, webhookSecret } = opts;
 
+  // CRITICAL — this plugin is registered WITHOUT `fastify-plugin` (`fp`)
+  // wrapping. That was a Phase 7.6 regression fix (smoke-test 2026-04-26):
+  // `fp()` BREAKS encapsulation so the `addContentTypeParser` below would
+  // override the default JSON parser globally, breaking every other JSON POST
+  // route in the app with "Request body size did not match Content-Length".
+  // Encapsulation MUST be preserved here so the raw-body parser stays scoped
+  // to the webhook route only.
+  //
   // Override JSON parser for this plugin scope to retain the raw body.
   // Resend's Svix signature is computed over the exact bytes of the request
   // body — we MUST verify against the raw string before any reserialization.
@@ -174,7 +182,7 @@ export const webhookRoutes = fp<WebhookRoutesOptions>(async (app, opts) => {
 
     return reply.status(200).send({ received: true });
   });
-});
+};
 
 /**
  * Mutate the notification row to reflect a Resend delivery event.

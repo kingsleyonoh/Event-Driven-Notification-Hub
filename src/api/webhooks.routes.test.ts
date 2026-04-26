@@ -170,3 +170,42 @@ describe('POST /api/webhooks/resend — signature gating', () => {
     expect(updated.errorMessage).toContain('bounce');
   });
 });
+
+// Phase 7.6 regression — the webhook plugin's `addContentTypeParser` for
+// application/json MUST stay encapsulated and NOT leak to sibling routes.
+// Production smoke test 2026-04-26 caught this: when webhookRoutes was
+// wrapped in `fp()` (which BREAKS encapsulation), every other JSON-POST
+// endpoint in the app failed with "Request body size did not match
+// Content-Length" because the raw-body parser overrode the default JSON
+// parser globally. This test registers webhookRoutes alongside a simple
+// JSON-POST route and confirms BOTH work — the original test suite
+// missed this because it only registered webhookRoutes in isolation.
+describe('Phase 7.6 — webhook plugin must not leak content-type parser', () => {
+  it('does not break sibling JSON-POST routes when registered together', async () => {
+    const app = Fastify({ logger: false });
+    await app.register(errorHandlerPlugin);
+    await app.register(rateLimiterPlugin);
+
+    // Register a simple sibling JSON-POST route BEFORE the webhook plugin
+    app.post('/api/test-sibling', async (request) => {
+      const body = request.body as { value?: string };
+      return { received: body?.value ?? null };
+    });
+
+    // Register the webhook plugin — its content-type parser MUST stay
+    // scoped to its own plugin context.
+    await app.register(webhookRoutes, { db, webhookSecret: WEBHOOK_SECRET });
+
+    // The sibling route must still parse JSON normally — Fastify's default
+    // parser, NOT the raw-string parser the webhook plugin registers.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/test-sibling',
+      headers: { 'content-type': 'application/json' },
+      payload: JSON.stringify({ value: 'hello' }),
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ received: 'hello' });
+  });
+});
