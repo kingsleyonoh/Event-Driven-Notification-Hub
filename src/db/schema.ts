@@ -47,10 +47,14 @@ export const templates = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => [
-    unique('templates_tenant_name_locale_unique').on(
+    // Phase 7 7b — extended H9 constraint to include `channel` so a tenant
+    // can have per-channel `__digest` variants (email + telegram) for the
+    // same locale. See migration 0013.
+    unique('templates_tenant_name_locale_channel_unique').on(
       table.tenantId,
       table.name,
       table.locale,
+      table.channel,
     ),
   ],
 );
