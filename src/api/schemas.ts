@@ -186,6 +186,26 @@ export const upsertHeartbeatSchema = z.object({
   interval_minutes: z.number().int().min(1).optional(),
 });
 
+// ─── Suppressions (Phase 7 H10) ─────────────────────────────────────
+
+export const suppressionReasonEnum = z.enum([
+  'manual',
+  'unsubscribed',
+  'hard_bounce',
+  'complaint',
+]);
+
+export const createSuppressionSchema = z.object({
+  recipient: z.string().email(),
+  reason: suppressionReasonEnum.optional().default('manual'),
+  expires_at: z.string().datetime().nullable().optional(),
+});
+
+export const listSuppressionsQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional().default(50),
+});
+
 // ─── Pagination ──────────────────────────────────────────────────────
 
 export const paginationSchema = z.object({
