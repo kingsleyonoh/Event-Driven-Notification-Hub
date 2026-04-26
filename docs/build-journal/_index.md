@@ -19,6 +19,7 @@
 | 016 | `016-batch.md` | Phase 7 H7 — per-tenant rate limit on `/api/events` + admin PATCH route. **H7 COMPLETE.** Hook-ordering fix (preHandler vs onRequest). |
 | 017 | `017-batch.md` | Phase 7 H10 part 1 — `tenant_suppressions` table + pipeline guard + webhook auto-add on hard-bounce/complaint. |
 | 018 | `018-batch.md` | Phase 7 H10 part 2 — suppressions CRUD routes, cursor microsecond fix. **H10 COMPLETE.** |
+| 019 | `019-batch.md` | Phase 7 H9 — multi-language template variants (locale + en fallback). **H9 COMPLETE.** |
 
 ## How batch files are written
 
