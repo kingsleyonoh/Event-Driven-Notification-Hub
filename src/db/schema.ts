@@ -36,6 +36,8 @@ export const templates = pgTable(
     subject: text('subject'),
     body: text('body').notNull(),
     bodyText: text('body_text'),
+    // Phase 7 H9 — locale variant. Default 'en'. Existing rows backfilled to 'en'.
+    locale: text('locale').notNull().default('en'),
     replyTo: text('reply_to'),
     attachmentsConfig: jsonb('attachments_config').$type<
       Array<{ filename_template: string; url_field: string }>
@@ -45,7 +47,11 @@ export const templates = pgTable(
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => [
-    unique('templates_tenant_name_unique').on(table.tenantId, table.name),
+    unique('templates_tenant_name_locale_unique').on(
+      table.tenantId,
+      table.name,
+      table.locale,
+    ),
   ],
 );
 

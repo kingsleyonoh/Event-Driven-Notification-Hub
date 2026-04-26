@@ -103,6 +103,12 @@ export const headersSchema = z
     }
   });
 
+// Phase 7 H9 — locale tag for multi-language template variants.
+// Range 2..10 covers `'en'` / `'de'` (2-char) up to `'pt-BR'` / `'zh-Hant'`
+// (mid-length BCP-47 tags). Server normalizes to lowercase at query time —
+// stored verbatim per tenant authoring convention.
+export const localeSchema = z.string().min(2).max(10);
+
 export const createTemplateSchema = z.object({
   name: z.string().min(1),
   channel: channelEnum,
@@ -111,6 +117,8 @@ export const createTemplateSchema = z.object({
   // Phase 7 H8 — optional plain-text body for non-HTML clients. When omitted,
   // Resend auto-generates a text alternative from the HTML body.
   body_text: z.string().nullable().optional(),
+  // Phase 7 H9 — locale variant. Defaults to 'en' when absent.
+  locale: localeSchema.optional().default('en'),
   attachments_config: attachmentsConfigSchema,
   reply_to: z.string().email().nullable().optional(),
   headers: headersSchema,
@@ -122,9 +130,15 @@ export const updateTemplateSchema = z.object({
   subject: z.string().optional(),
   body: z.string().min(1).optional(),
   body_text: z.string().nullable().optional(),
+  locale: localeSchema.optional(),
   attachments_config: attachmentsConfigSchema,
   reply_to: z.string().email().nullable().optional(),
   headers: headersSchema,
+});
+
+// Phase 7 H9 — list endpoint locale filter. When omitted, return all locales.
+export const listTemplatesQuerySchema = z.object({
+  locale: localeSchema.optional(),
 });
 
 export const previewTemplateSchema = z.object({

@@ -136,19 +136,79 @@ export async function processNotification(
     return;
   }
 
-  // 6. Render template
-  const [tmpl] = await db
+  // 6. Resolve template — Phase 7 H9 locale-aware lookup.
+  // The rule pins a template by id (the canonical 'en' variant authored against
+  // the rule). At dispatch time we pivot from rule.templateId → that template's
+  // NAME → search all (tenantId, name, locale) variants for a match, falling
+  // back to 'en'. On second miss, mark notification failed with a clear message.
+  const requestedLocale =
+    typeof payload?.locale === 'string' && payload.locale.length > 0
+      ? (payload.locale as string)
+      : 'en';
+
+  const [ruleTmpl] = await db
     .select()
     .from(templates)
     .where(eq(templates.id, rule.templateId))
     .limit(1);
 
-  if (!tmpl) {
+  if (!ruleTmpl) {
     await insertNotification(db, {
       tenantId, ruleId: rule.id, eventType, eventId, recipient,
       channel: rule.channel, status: 'failed', errorMessage: 'template not found',
     });
     return;
+  }
+
+  let tmpl = ruleTmpl;
+  if (ruleTmpl.locale !== requestedLocale) {
+    // Try the requested locale.
+    const [localeMatch] = await db
+      .select()
+      .from(templates)
+      .where(
+        and(
+          eq(templates.tenantId, tenantId),
+          eq(templates.name, ruleTmpl.name),
+          eq(templates.locale, requestedLocale),
+        ),
+      )
+      .limit(1);
+
+    if (localeMatch) {
+      tmpl = localeMatch;
+    } else if (ruleTmpl.locale === 'en') {
+      // Fallback already loaded — the rule's template IS the en variant.
+      tmpl = ruleTmpl;
+    } else {
+      // Try (tenant, name, 'en') as final fallback.
+      const [enFallback] = await db
+        .select()
+        .from(templates)
+        .where(
+          and(
+            eq(templates.tenantId, tenantId),
+            eq(templates.name, ruleTmpl.name),
+            eq(templates.locale, 'en'),
+          ),
+        )
+        .limit(1);
+
+      if (enFallback) {
+        tmpl = enFallback;
+      } else {
+        await insertNotification(db, {
+          tenantId, ruleId: rule.id, eventType, eventId, recipient,
+          channel: rule.channel, status: 'failed',
+          errorMessage: `Template "${ruleTmpl.name}" not found for locale "${requestedLocale}" (no en fallback)`,
+        });
+        logger.warn(
+          { eventId, recipient, templateName: ruleTmpl.name, locale: requestedLocale },
+          'template locale lookup failed — no en fallback exists',
+        );
+        return;
+      }
+    }
   }
 
   const { renderedSubject, renderedBody } = renderSubjectAndBody(

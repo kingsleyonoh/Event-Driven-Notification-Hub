@@ -1,7 +1,7 @@
 import fp from 'fastify-plugin';
 import { eq, and } from 'drizzle-orm';
 import { templates } from '../db/schema.js';
-import { createTemplateSchema, updateTemplateSchema, previewTemplateSchema } from './schemas.js';
+import { createTemplateSchema, updateTemplateSchema, previewTemplateSchema, listTemplatesQuerySchema } from './schemas.js';
 import { ValidationError, NotFoundError, ConflictError } from '../lib/errors.js';
 import { renderSubjectAndBody } from '../templates/renderer.js';
 import type { Database } from '../db/client.js';
@@ -20,7 +20,7 @@ export const templatesRoutes = fp<TemplatesRoutesOptions>(async (app, opts) => {
       throw new ValidationError('Invalid template data', parsed.error.issues.map((i) => i.message));
     }
 
-    const { name, channel, subject, body, body_text, attachments_config, reply_to, headers } = parsed.data;
+    const { name, channel, subject, body, body_text, locale, attachments_config, reply_to, headers } = parsed.data;
 
     try {
       const [template] = await db
@@ -32,6 +32,7 @@ export const templatesRoutes = fp<TemplatesRoutesOptions>(async (app, opts) => {
           subject,
           body,
           bodyText: body_text ?? null,
+          locale,
           attachmentsConfig: attachments_config ?? null,
           replyTo: reply_to ?? null,
           headers: headers ?? null,
@@ -48,13 +49,19 @@ export const templatesRoutes = fp<TemplatesRoutesOptions>(async (app, opts) => {
     }
   });
 
-  // GET /api/templates
+  // GET /api/templates — Phase 7 H9: optional ?locale=de filter
   app.get('/api/templates', async (request) => {
-    const result = await db
-      .select()
-      .from(templates)
-      .where(eq(templates.tenantId, request.tenantId));
+    const parsed = listTemplatesQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      throw new ValidationError('Invalid query', parsed.error.issues.map((i) => i.message));
+    }
+    const { locale } = parsed.data;
 
+    const where = locale
+      ? and(eq(templates.tenantId, request.tenantId), eq(templates.locale, locale))
+      : eq(templates.tenantId, request.tenantId);
+
+    const result = await db.select().from(templates).where(where);
     return { templates: result };
   });
 
@@ -92,6 +99,9 @@ export const templatesRoutes = fp<TemplatesRoutesOptions>(async (app, opts) => {
     if (data.body !== undefined) updates.body = data.body;
     if (data.body_text !== undefined) {
       updates.bodyText = data.body_text;
+    }
+    if (data.locale !== undefined) {
+      updates.locale = data.locale;
     }
     if (data.attachments_config !== undefined) {
       updates.attachmentsConfig = data.attachments_config;
