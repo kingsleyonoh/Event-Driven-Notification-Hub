@@ -21,6 +21,7 @@
 | 018 | `018-batch.md` | Phase 7 H10 part 2 — suppressions CRUD routes, cursor microsecond fix. **H10 COMPLETE.** |
 | 019 | `019-batch.md` | Phase 7 H9 — multi-language template variants (locale + en fallback). **H9 COMPLETE.** |
 | 020 | `020-batch.md` | Phase 7 H6 — multiple Resend domains per tenant + per-rule override. **H6 COMPLETE. ALL H1-H10 NOW DONE.** |
+| 021 | `021-batch.md` | Phase 7 7b bonus (4/6) + ship-gate verification. notifications.metadata, recipient validation, tenant config Zod, health axis. **PHASE 7 CODE-COMPLETE.** |
 
 ## How batch files are written
 
