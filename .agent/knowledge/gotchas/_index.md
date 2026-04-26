@@ -14,6 +14,7 @@
 | `2026-03-31-drizzle-pg-error-cause-code.md` | Drizzle wraps PG errors — unique-violation `'23505'` lives at `err.cause.code`, not `err.code`. |
 | `2026-04-25-test-db-needs-separate-alter.md` | When bypassing `drizzle-kit migrate`, apply ALTERs to BOTH `notification_hub` and `notification_hub_test` — they're separate physical DBs. |
 | `2026-04-25-drizzle-text-enum-no-check-constraint.md` | Drizzle's `text { enum: [...] }` is TS-only — emits no Postgres CHECK. Add an explicit `ADD CONSTRAINT ... CHECK` migration if DB-level enum enforcement is needed. |
+| `2026-04-26-sandbox-requires-fake-api-key.md` | H5 sandbox-only tenants silently bypass sandbox if `apiKey` is missing — `emailChannelConfigSchema` requires it; resolver returns null on validation fail; dispatcher falls back to env-var Resend. Workaround: placeholder apiKey. Proper fix: `superRefine` to make apiKey conditional on sandbox. |
 | `EXAMPLE.md` | Template showing the expected shape — delete once a real gotcha exists. |
 
 ## How to add a new gotcha
