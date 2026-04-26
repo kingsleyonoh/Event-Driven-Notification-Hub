@@ -20,6 +20,7 @@
 | 017 | `017-batch.md` | Phase 7 H10 part 1 — `tenant_suppressions` table + pipeline guard + webhook auto-add on hard-bounce/complaint. |
 | 018 | `018-batch.md` | Phase 7 H10 part 2 — suppressions CRUD routes, cursor microsecond fix. **H10 COMPLETE.** |
 | 019 | `019-batch.md` | Phase 7 H9 — multi-language template variants (locale + en fallback). **H9 COMPLETE.** |
+| 020 | `020-batch.md` | Phase 7 H6 — multiple Resend domains per tenant + per-rule override. **H6 COMPLETE. ALL H1-H10 NOW DONE.** |
 
 ## How batch files are written
 
