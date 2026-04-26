@@ -18,6 +18,7 @@
 | 015 | `015-batch.md` | Phase 7 H8 — plain-text email body fallback (`body_text`). **H8 COMPLETE.** |
 | 016 | `016-batch.md` | Phase 7 H7 — per-tenant rate limit on `/api/events` + admin PATCH route. **H7 COMPLETE.** Hook-ordering fix (preHandler vs onRequest). |
 | 017 | `017-batch.md` | Phase 7 H10 part 1 — `tenant_suppressions` table + pipeline guard + webhook auto-add on hard-bounce/complaint. |
+| 018 | `018-batch.md` | Phase 7 H10 part 2 — suppressions CRUD routes, cursor microsecond fix. **H10 COMPLETE.** |
 
 ## How batch files are written
 
