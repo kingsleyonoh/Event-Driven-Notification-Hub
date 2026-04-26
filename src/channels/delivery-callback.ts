@@ -1,9 +1,12 @@
-import crypto from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 
 import { tenants, emailDeliveryEvents } from '../db/schema.js';
 import { resolveTenantChannelConfig } from '../lib/channel-config.js';
 import { createLogger } from '../lib/logger.js';
+import {
+  signOutboundPayload,
+  buildSignedOutboundRequest,
+} from '../lib/outbound-signing.js';
 import type { Database } from '../db/client.js';
 
 const logger = createLogger('delivery-callback');
@@ -26,56 +29,28 @@ export interface DeliveryCallbackEvent {
 }
 
 /**
- * Canonical JSON: stable key ordering at every level so that two equal
- * objects always produce byte-identical JSON. This is essential for
- * HMAC signing — non-deterministic stringification would mean the
- * tenant computes a different signature than we do for the same logical
- * payload.
+ * Pure helper: HMAC-SHA256 sign the canonical JSON of a DeliveryCallbackEvent
+ * using the tenant's `delivery_callback_secret`. Returns lowercase hex digest.
  *
- * Recurses into plain objects and arrays. Leaves primitives untouched.
- * Does NOT support Maps/Sets/Date/BigInt — webhook payloads are pure
- * JSON anyway.
- */
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== 'object') {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return '[' + value.map((item) => canonicalJson(item)).join(',') + ']';
-  }
-  const keys = Object.keys(value as Record<string, unknown>).sort();
-  const parts = keys.map((k) => {
-    const v = (value as Record<string, unknown>)[k];
-    return JSON.stringify(k) + ':' + canonicalJson(v);
-  });
-  return '{' + parts.join(',') + '}';
-}
-
-/**
- * Pure helper: HMAC-SHA256 sign the canonical JSON of an event using the
- * tenant's `delivery_callback_secret`. Returns lowercase hex digest.
- *
- * Exported for direct testing (signing is the load-bearing security bit;
- * we want deterministic tests without needing to mock fetch).
+ * Re-exported here for backward-compat with existing tests; the underlying
+ * implementation now lives in `src/lib/outbound-signing.ts` (Phase 7 7b — shared
+ * across all outbound callbacks).
  */
 export function signPayload(event: DeliveryCallbackEvent, secret: string): string {
-  const canonical = canonicalJson(event);
-  return crypto.createHmac('sha256', secret).update(canonical).digest('hex');
+  return signOutboundPayload(event, secret);
 }
 
 /**
- * Build the canonical body + matching signature header for an event.
- * Returned together so the same canonical bytes get sent over the wire
- * AND signed (we never re-stringify between sign and send — that path
- * is where signature/body mismatches creep in).
+ * Build the canonical body + matching `X-Hub-Signature` header for a delivery
+ * callback. Re-exported via the shared outbound-signing module so future
+ * callback families (suppression, generic webhooks, alerts) reuse the exact
+ * same byte-for-byte signing path.
  */
 function buildSignedRequest(
   event: DeliveryCallbackEvent,
   secret: string,
 ): { body: string; signatureHeader: string } {
-  const body = canonicalJson(event);
-  const digest = crypto.createHmac('sha256', secret).update(body).digest('hex');
-  return { body, signatureHeader: `sha256=${digest}` };
+  return buildSignedOutboundRequest(event, secret);
 }
 
 /**

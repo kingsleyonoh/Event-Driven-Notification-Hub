@@ -1,5 +1,15 @@
 # 010 — HMAC-Signed Outbound Tenant Callback
 
+> **Phase 7 7b update (2026-04-26):** Shared helpers live at
+> `src/lib/outbound-signing.ts` — exports `canonicalJson()`,
+> `signOutboundPayload(event, secret)`, and `buildSignedOutboundRequest(event, secret)`.
+> ALL future Hub→tenant outbound callbacks (delivery callbacks, suppression
+> notifications, generic webhook fan-out, alert callbacks) MUST import from
+> this module rather than reimplementing the canonical-JSON or HMAC step.
+> `delivery-callback.ts` keeps its `signPayload()` export as a typed wrapper
+> for backward compatibility with its existing test suite, but new code
+> should import from `lib/outbound-signing.ts` directly.
+
 ## Problem
 
 When the Hub POSTs an event to a tenant-supplied URL (delivery callbacks, suppression-list callbacks, future webhooks), the tenant needs a way to verify the request actually came from the Hub and wasn't crafted by an attacker who guessed the URL. PRD §7b mandates HMAC signing on **all** outbound tenant callbacks — not just delivery callbacks (H4). This pattern captures the canonical shape so every future callback follows the same recipe.
