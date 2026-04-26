@@ -300,6 +300,91 @@ describe('Admin Tenants API — CRUD', () => {
     expect(res.statusCode).toBe(404);
   });
 
+  // Phase 7 7b — tenant config schema validation at WRITE time.
+  it('POST /api/admin/tenants — rejects malformed channels.email config (missing apiKey)', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/tenants',
+      headers: adminHeaders(),
+      payload: {
+        name: 'Bad Config Tenant',
+        config: { channels: { email: { from: 'noreply@x.com' } } }, // missing apiKey
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('POST /api/admin/tenants — rejects rate_limits over 1000', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/tenants',
+      headers: adminHeaders(),
+      payload: {
+        name: 'Excessive RL Tenant',
+        config: { rate_limits: { events_per_minute: 99999 } },
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('POST /api/admin/tenants — accepts valid full Phase 7 config', async () => {
+    const app = await buildTestApp();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/admin/tenants',
+      headers: adminHeaders(),
+      payload: {
+        name: 'Valid Phase 7 Tenant',
+        config: {
+          channels: {
+            email: {
+              apiKey: 're_test_xx',
+              from: 'noreply@valid.com',
+              replyTo: 'support@valid.com',
+              sandbox: true,
+              fromDomains: [{ domain: 'valid.com', default: true }],
+            },
+          },
+          rate_limits: { events_per_minute: 250 },
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    createdTenantIds.push(res.json().tenant.id);
+  });
+
+  it('PUT /api/admin/tenants/:id — rejects malformed config on update', async () => {
+    const app = await buildTestApp();
+    // Create a clean tenant
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/admin/tenants',
+      headers: adminHeaders(),
+      payload: { name: 'Update Validation Tenant' },
+    });
+    const tenantId = createRes.json().tenant.id;
+    createdTenantIds.push(tenantId);
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/api/admin/tenants/${tenantId}`,
+      headers: adminHeaders(),
+      payload: {
+        config: { channels: { telegram: { botUsername: 'NoToken' } } }, // missing botToken
+      },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe('VALIDATION_ERROR');
+  });
+
   it('DELETE /api/admin/tenants/:id — removes tenant', async () => {
     // Create a tenant specifically for deletion
     const app = await buildTestApp();

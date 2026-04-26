@@ -4,6 +4,8 @@ import {
   upsertPreferencesSchema,
   createTemplateSchema,
   updateTemplateSchema,
+  createRuleSchema,
+  tenantChannelConfigSchema,
 } from './schemas.js';
 
 describe('channelEnum', () => {
@@ -224,6 +226,175 @@ describe('updateTemplateSchema — headers', () => {
   it('rejects forbidden header name on update', () => {
     const result = updateTemplateSchema.safeParse({
       headers: { 'Subject': 'override attempt' },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// Phase 7 7b — Recipient validation Zod refinement on rule-create.
+// Only enforces shape when `recipient_type === 'static'`. Payload-path
+// recipients (`event_field`) and `role`-typed recipients can't be
+// validated at create time.
+describe('createRuleSchema — static recipient validation', () => {
+  const baseTemplate = '00000000-0000-0000-0000-000000000000';
+
+  it('accepts a valid static email when channel=email', () => {
+    const result = createRuleSchema.safeParse({
+      event_type: 'order.completed',
+      channel: 'email',
+      template_id: baseTemplate,
+      recipient_type: 'static',
+      recipient_value: 'admin@example.com',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a non-email static recipient when channel=email', () => {
+    const result = createRuleSchema.safeParse({
+      event_type: 'order.completed',
+      channel: 'email',
+      template_id: baseTemplate,
+      recipient_type: 'static',
+      recipient_value: 'not-an-email',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const msg = result.error.issues.map((i) => i.message).join(' ');
+      expect(msg).toMatch(/email/i);
+    }
+  });
+
+  it('accepts a payload-path recipient (event_field) for channel=email even if not email-shaped', () => {
+    const result = createRuleSchema.safeParse({
+      event_type: 'order.completed',
+      channel: 'email',
+      template_id: baseTemplate,
+      recipient_type: 'event_field',
+      recipient_value: 'recipient.id',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a static numeric chat_id for channel=telegram', () => {
+    const result = createRuleSchema.safeParse({
+      event_type: 'alert.triggered',
+      channel: 'telegram',
+      template_id: baseTemplate,
+      recipient_type: 'static',
+      recipient_value: '123456789',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a static @username for channel=telegram', () => {
+    const result = createRuleSchema.safeParse({
+      event_type: 'alert.triggered',
+      channel: 'telegram',
+      template_id: baseTemplate,
+      recipient_type: 'static',
+      recipient_value: '@kingsley_bot',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects an obviously invalid telegram static recipient', () => {
+    const result = createRuleSchema.safeParse({
+      event_type: 'alert.triggered',
+      channel: 'telegram',
+      template_id: baseTemplate,
+      recipient_type: 'static',
+      recipient_value: 'not a phone or chat id with spaces',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a static phone-like value for channel=sms', () => {
+    const result = createRuleSchema.safeParse({
+      event_type: 'order.shipped',
+      channel: 'sms',
+      template_id: baseTemplate,
+      recipient_type: 'static',
+      recipient_value: '+15551234567',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a non-phone static value for channel=sms', () => {
+    const result = createRuleSchema.safeParse({
+      event_type: 'order.shipped',
+      channel: 'sms',
+      template_id: baseTemplate,
+      recipient_type: 'static',
+      recipient_value: 'lol',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// Phase 7 7b — Top-level tenant config schema validation.
+// Composes channels.email, channels.telegram, and rate_limits.
+describe('tenantChannelConfigSchema — full top-level validation', () => {
+  it('accepts a config with email + telegram + rate_limits', () => {
+    const result = tenantChannelConfigSchema.safeParse({
+      channels: {
+        email: {
+          apiKey: 're_test',
+          from: 'noreply@example.com',
+          replyTo: 'support@example.com',
+          sandbox: true,
+          fromDomains: [{ domain: 'example.com', default: true }],
+        },
+        telegram: {
+          botToken: '123:ABC',
+          botUsername: 'TestBot',
+        },
+      },
+      rate_limits: {
+        events_per_minute: 200,
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects rate_limits.events_per_minute over 1000', () => {
+    const result = tenantChannelConfigSchema.safeParse({
+      rate_limits: { events_per_minute: 9999 },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects rate_limits.events_per_minute under 1', () => {
+    const result = tenantChannelConfigSchema.safeParse({
+      rate_limits: { events_per_minute: 0 },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects malformed email config (missing apiKey)', () => {
+    const result = tenantChannelConfigSchema.safeParse({
+      channels: { email: { from: 'noreply@example.com' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('passes through unknown top-level keys (legacy compat)', () => {
+    // Existing tenants may store ad-hoc fields like dedup_window or
+    // legacy keys; the validator only enforces shapes on known sections.
+    const result = tenantChannelConfigSchema.safeParse({
+      channels: {},
+      dedup_window: 30,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts an empty config object', () => {
+    const result = tenantChannelConfigSchema.safeParse({});
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects malformed telegram config (missing botToken)', () => {
+    const result = tenantChannelConfigSchema.safeParse({
+      channels: { telegram: { botUsername: 'x' } },
     });
     expect(result.success).toBe(false);
   });

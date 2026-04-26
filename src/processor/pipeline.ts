@@ -231,7 +231,11 @@ export async function processNotification(
     }
   }
 
-  // 7. Insert notification
+  // 7. Insert notification — Phase 7 7b copies `payload._metadata`
+  //    (when it's a plain object) into `notifications.metadata` for tenant
+  //    pass-through correlation (request_id / trace_id / job_id surfaces).
+  //    Reserved underscore-prefix matches `_reply_to` from H2.
+  const tenantMetadata = extractTenantMetadata(payload);
   const [notif] = await db
     .insert(notifications)
     .values({
@@ -240,6 +244,7 @@ export async function processNotification(
       subject: renderedSubject,
       bodyPreview: renderedBody.slice(0, 500),
       status: 'pending',
+      ...(tenantMetadata ? { metadata: tenantMetadata } : {}),
     })
     .returning();
 
@@ -360,6 +365,20 @@ async function isSuppressed(
     )
     .limit(1);
   return Boolean(hit);
+}
+
+/**
+ * Phase 7 7b — Extract tenant pass-through metadata from event payload.
+ * Returns the `_metadata` value only when it's a plain object — defensive
+ * against tenants that might accidentally send a string/number/array.
+ */
+function extractTenantMetadata(
+  payload: Record<string, unknown> | undefined,
+): Record<string, unknown> | null {
+  if (!payload) return null;
+  const meta = payload._metadata;
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return null;
+  return meta as Record<string, unknown>;
 }
 
 function isDirectAddress(value: string, channel: string): boolean {

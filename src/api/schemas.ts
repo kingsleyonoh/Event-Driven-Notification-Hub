@@ -63,12 +63,27 @@ export const telegramChannelConfigSchema = z.object({
   botUsername: z.string().min(1),
 });
 
+// Phase 7 7b — Per-tenant rate-limit overrides on `tenants.config.rate_limits`.
+// Stored on the freeform `config` JSONB; surfaced via PATCH /api/admin/tenants/:id/rate-limit.
+// Range 1–1000 enforced at the API boundary; the resolver caps defensively.
+//
+// Defined here (above tenantChannelConfigSchema) so the top-level config validator
+// can compose it. The standalone export below keeps existing imports working.
+const rateLimitsConfigSchemaInternal = z.object({
+  events_per_minute: z.number().int().min(1).max(1000),
+});
+
+// Top-level tenant config validator (Phase 7 7b). Validates the SHAPE of
+// known sections (channels, rate_limits) when present; passes through
+// unknown top-level keys for legacy compat (existing tenants may store
+// ad-hoc fields like `dedup_window`).
 export const tenantChannelConfigSchema = z.object({
   channels: z.object({
     email: emailChannelConfigSchema.optional(),
     telegram: telegramChannelConfigSchema.optional(),
   }).optional(),
-});
+  rate_limits: rateLimitsConfigSchemaInternal.optional(),
+}).passthrough();
 
 // ─── Rules ───────────────────────────────────────────────────────────
 
@@ -81,16 +96,66 @@ export const fromDomainOverrideSchema = z
   .nullable()
   .optional();
 
-export const createRuleSchema = z.object({
-  event_type: z.string().min(1),
-  channel: channelEnum,
-  template_id: z.string().uuid(),
-  recipient_type: recipientTypeEnum,
-  recipient_value: z.string().min(1),
-  urgency: urgencyEnum.optional().default('normal'),
-  enabled: z.boolean().optional().default(true),
-  from_domain_override: fromDomainOverrideSchema,
-});
+// Phase 7 7b — Static recipient shape validators.
+// Only enforced when `recipient_type === 'static'`. Payload-path
+// (`event_field`) and `role`-typed recipients can't be validated at create
+// time — they resolve at dispatch from the event body.
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^\+?\d{7,}$/;
+const TELEGRAM_USERNAME_REGEX = /^@?[a-zA-Z0-9_]{4,32}$/;
+const TELEGRAM_CHAT_ID_REGEX = /^-?\d{5,}$/;
+
+function validateStaticRecipient(
+  channel: 'email' | 'sms' | 'in_app' | 'telegram',
+  recipientType: string,
+  recipientValue: string,
+): string | null {
+  if (recipientType !== 'static') return null;
+  if (channel === 'email') {
+    return EMAIL_REGEX.test(recipientValue)
+      ? null
+      : 'recipient_value must be a valid email address when channel=email and recipient_type=static';
+  }
+  if (channel === 'sms') {
+    return PHONE_REGEX.test(recipientValue)
+      ? null
+      : 'recipient_value must be a phone number (digits, optional +) when channel=sms and recipient_type=static';
+  }
+  if (channel === 'telegram') {
+    return TELEGRAM_USERNAME_REGEX.test(recipientValue) ||
+      TELEGRAM_CHAT_ID_REGEX.test(recipientValue)
+      ? null
+      : 'recipient_value must be a Telegram username (@handle) or numeric chat_id when channel=telegram and recipient_type=static';
+  }
+  // in_app uses userId — accept any non-empty string (already enforced by min(1))
+  return null;
+}
+
+export const createRuleSchema = z
+  .object({
+    event_type: z.string().min(1),
+    channel: channelEnum,
+    template_id: z.string().uuid(),
+    recipient_type: recipientTypeEnum,
+    recipient_value: z.string().min(1),
+    urgency: urgencyEnum.optional().default('normal'),
+    enabled: z.boolean().optional().default(true),
+    from_domain_override: fromDomainOverrideSchema,
+  })
+  .superRefine((data, ctx) => {
+    const err = validateStaticRecipient(
+      data.channel,
+      data.recipient_type,
+      data.recipient_value,
+    );
+    if (err) {
+      ctx.addIssue({
+        code: 'custom',
+        message: err,
+        path: ['recipient_value'],
+      });
+    }
+  });
 
 export const updateRuleSchema = z.object({
   event_type: z.string().min(1).optional(),
@@ -214,9 +279,8 @@ export const publishEventSchema = z.object({
 // Phase 7 H7 — Per-tenant rate-limit overrides on `tenants.config.rate_limits`.
 // Stored on the freeform `config` JSONB; surfaced via PATCH /api/admin/tenants/:id/rate-limit.
 // Range 1–1000 enforced at the API boundary; the resolver caps defensively.
-export const rateLimitsConfigSchema = z.object({
-  events_per_minute: z.number().int().min(1).max(1000),
-});
+// Re-exports the internal schema defined above for tenantChannelConfigSchema.
+export const rateLimitsConfigSchema = rateLimitsConfigSchemaInternal;
 
 export const updateTenantRateLimitSchema = z.object({
   events_per_minute: z.number().int().min(1).max(1000),

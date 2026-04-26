@@ -145,6 +145,9 @@ export const notifications = pgTable(
     subject: text('subject'),
     bodyPreview: text('body_preview'),
     payload: jsonb('payload').$type<Record<string, unknown>>(),
+    // Phase 7 7b — tenant pass-through metadata (request_id, trace_id, etc.)
+    // Pipeline copies `event.payload._metadata` (if present) verbatim.
+    metadata: jsonb('metadata').$type<Record<string, unknown>>(),
     status: text('status', {
       enum: ['pending', 'sent', 'sent_sandbox', 'failed', 'queued_digest', 'skipped', 'held'],
     }).notNull(),

@@ -6,6 +6,7 @@ import {
   createTenantSchema,
   updateTenantSchema,
   updateTenantRateLimitSchema,
+  tenantChannelConfigSchema,
 } from './schemas.js';
 import { ValidationError, NotFoundError } from '../lib/errors.js';
 import type { Database } from '../db/client.js';
@@ -77,6 +78,19 @@ export const adminRoutes = fp<AdminRoutesOptions>(async (app, opts) => {
 
     const { name, config } = parsed.data;
 
+    // Phase 7 7b — validate the freeform `config` JSONB shape against
+    // tenantChannelConfigSchema (channels.email, channels.telegram, rate_limits).
+    // Reject malformed config at WRITE time instead of dispatch time.
+    if (config !== undefined) {
+      const cfg = tenantChannelConfigSchema.safeParse(config);
+      if (!cfg.success) {
+        throw new ValidationError(
+          'Invalid tenant config',
+          cfg.error.issues.map((i) => i.message),
+        );
+      }
+    }
+
     // Mint both secrets at create time. `deliveryCallbackSecret` is returned
     // ONCE on this response and never again — the sanitizer strips it on
     // subsequent GETs. Tenants must capture it now (or rotate later).
@@ -135,6 +149,17 @@ export const adminRoutes = fp<AdminRoutesOptions>(async (app, opts) => {
     const parsed = updateTenantSchema.safeParse(request.body);
     if (!parsed.success) {
       throw new ValidationError('Invalid tenant data', parsed.error.issues.map((i) => i.message));
+    }
+
+    // Phase 7 7b — validate freeform `config` shape on update too.
+    if (parsed.data.config !== undefined) {
+      const cfg = tenantChannelConfigSchema.safeParse(parsed.data.config);
+      if (!cfg.success) {
+        throw new ValidationError(
+          'Invalid tenant config',
+          cfg.error.issues.map((i) => i.message),
+        );
+      }
     }
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };

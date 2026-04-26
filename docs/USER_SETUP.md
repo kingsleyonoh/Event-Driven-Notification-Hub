@@ -233,6 +233,128 @@ def verify_hub_callback(raw_body: bytes, signature_header: str, secret: str) -> 
 - The callback request has a **5-second timeout**. Tenants whose endpoints are slow will see `callback_status_code = NULL` on aborted requests.
 - Callback dispatch is **opt-in** — tenants without a `deliveryCallbackUrl` simply have the events recorded in `email_delivery_events` and the originating `notifications` row updated; no outbound POST happens.
 
+## 11. Phase 7 Features Reference
+
+The Hub ships ten advanced email/multi-tenant features layered on top of the basic flow above. Each is opt-in via tenant or template config — defaults preserve legacy behavior. Features below are listed in the order they appear in the dispatch pipeline.
+
+### 11.1 Email attachments (`attachments_config` on templates)
+
+Templates can declare a list of attachment slots; the pipeline fetches each URL from the event payload at dispatch time, base64-encodes it, and forwards to Resend. Filename and URL field are both Handlebars-templated.
+
+```bash
+curl -X POST .../api/templates -H "X-API-Key: $KEY" -d '{
+  "name": "invoice", "channel": "email", "body": "...",
+  "attachments_config": [
+    { "filename_template": "invoice-{{invoice_number}}.pdf", "url_field": "invoice_url" }
+  ]
+}'
+```
+
+Failed fetches mark the notification `failed` with a clear `attachment fetch failed: ...` error — no email is sent.
+
+### 11.2 reply_to (event > template > tenant priority)
+
+Three layers, highest wins: `event.payload._reply_to` (per-message), `templates.reply_to` (per-template default), `tenants.config.channels.email.replyTo` (tenant fallback). Useful when one tenant runs multiple support inboxes through one Resend domain.
+
+```json
+{ "event_type": "ticket.replied", "event_id": "...", "payload": {
+  "_reply_to": "billing@yourdomain.com", ...
+}}
+```
+
+### 11.3 Custom email headers (RFC 8058 List-Unsubscribe)
+
+Templates can declare custom headers (Handlebars-templated values). RFC-822 token names only; reserved names (`Content-Type`, `From`, `To`, `Subject`) are rejected at validate-time. Per-header render failures are soft: the rest still ship.
+
+```json
+{ "headers": {
+  "List-Unsubscribe": "<{{unsub_url}}>",
+  "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+}}
+```
+
+### 11.4 Resend webhook + per-tenant delivery callback
+
+See section 10 above for full details. The Hub records every Resend delivery event (`delivered`/`bounced`/`complained`/`delivery_delayed`) in `email_delivery_events`, updates the originating notification's `status` / `delivered_at` / `bounce_type`, and (if configured) POSTs an HMAC-signed callback to the tenant's `deliveryCallbackUrl`.
+
+### 11.5 Sandbox mode (per-tenant `sandbox: true` toggle)
+
+Set `tenants.config.channels.email.sandbox = true` to short-circuit Resend sends. Notifications still traverse all pipeline gates (preferences, quiet hours, dedup, suppression) and land as `sent_sandbox` so you can audit what would have shipped.
+
+```json
+{ "config": { "channels": { "email": {
+  "apiKey": "re_...", "from": "noreply@x.com", "sandbox": true
+}}}}
+```
+
+### 11.6 Multi-domain Resend support (`fromDomains` array)
+
+Tenants with multiple verified Resend domains can list them; rules pick a domain via `from_domain_override` (per-rule). Priority: rule override → tenant `default: true` entry → first entry → legacy `from`.
+
+```json
+{ "channels": { "email": {
+  "apiKey": "re_...", "from": "noreply@primary.com",
+  "fromDomains": [
+    { "domain": "primary.com", "default": true },
+    { "domain": "transactional.com", "default": false }
+  ]
+}}}
+```
+
+```bash
+curl -X POST .../api/rules -H "X-API-Key: $KEY" -d '{
+  "event_type": "tx.completed", "channel": "email",
+  "template_id": "...", "recipient_type": "static",
+  "recipient_value": "ops@x.com",
+  "from_domain_override": "transactional.com"
+}'
+```
+
+### 11.7 Per-tenant `/api/events` rate limit
+
+Set `tenants.config.rate_limits.events_per_minute` (1–1000, default 60) to override the global rate limit on `POST /api/events` for that tenant. Patch via the dedicated admin endpoint:
+
+```bash
+curl -X PATCH .../api/admin/tenants/$ID/rate-limit \
+  -H "X-Admin-Key: $ADMIN_API_KEY" \
+  -d '{"events_per_minute": 250}'
+```
+
+### 11.8 Plain-text email body fallback (`body_text`)
+
+Templates can declare a separate plain-text body for non-HTML clients. When set, it's rendered with the same payload and forwarded to Resend; when omitted, Resend auto-generates a text alternative from the HTML body.
+
+```json
+{ "body": "<p>Hi {{name}}!</p>", "body_text": "Hi {{name}}!" }
+```
+
+### 11.9 Multi-language template variants (locale + en fallback)
+
+Templates are unique by `(tenant_id, name, locale)`. The pipeline reads `event.payload.locale` (default `'en'`) and looks up the matching variant; if missing, it falls back to the template's own locale, then the `'en'` variant for the same name. If no `'en'` exists either, the notification is marked `failed`.
+
+```bash
+# Create EN + DE variants
+curl -X POST .../api/templates -d '{ "name": "welcome", "locale": "en", ... }'
+curl -X POST .../api/templates -d '{ "name": "welcome", "locale": "de", ... }'
+```
+
+### 11.10 Per-tenant suppression list
+
+Hard bounces and spam complaints from Resend auto-populate `tenant_suppressions`. Manual entries via admin API. Pre-dispatch guard skips notifications targeting suppressed recipients (status `skipped`, `skip_reason: suppressed`).
+
+```bash
+# Manually suppress
+curl -X POST .../api/suppressions \
+  -H "X-API-Key: $KEY" \
+  -d '{"recipient": "bounced@x.com", "reason": "manual"}'
+
+# List
+curl .../api/suppressions -H "X-API-Key: $KEY"
+
+# Remove
+curl -X DELETE .../api/suppressions/$ID -H "X-API-Key: $KEY"
+```
+
 ## Troubleshooting
 
 - **No Telegram message:** Verify you completed the `/start` flow with the bot. Check preferences: `GET /api/preferences/kingsley`
