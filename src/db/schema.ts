@@ -76,6 +76,11 @@ export const notificationRules = pgTable(
     })
       .default('normal')
       .notNull(),
+    // Phase 7 H6 — optional per-rule sending-domain override. When set,
+    // the dispatcher uses this domain to construct the `From` address
+    // (combined with the local-part from the tenant's email config),
+    // overriding the tenant-level fromDomains default.
+    fromDomainOverride: text('from_domain_override'),
     enabled: boolean('enabled').default(true).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),

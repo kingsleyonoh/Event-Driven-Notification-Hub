@@ -38,6 +38,13 @@ export interface DispatchConfig {
    * auto-generates the text alternative from the HTML body.
    */
   text?: string;
+  /**
+   * Phase 7 H6 — rule-level sending-domain override
+   * (`notification_rules.from_domain_override`). When set, the dispatcher
+   * uses this domain in preference to the tenant-level `fromDomains`
+   * default. Null/undefined → fall through to tenant default.
+   */
+  ruleFromDomainOverride?: string | null;
 }
 
 export async function dispatch(
@@ -52,9 +59,15 @@ export async function dispatch(
     case 'email': {
       const emailConfig = resolveEmailConfig(config);
       if (emailConfig) {
+        const resolvedFrom = resolveFromAddress(emailConfig, config);
         const resolvedReplyTo = resolveReplyTo(config, emailConfig);
+        // `fromDomains` is the dispatcher's input only — strip it before
+        // the config crosses into `sendEmail` (it's not in EmailConfig).
+        const { fromDomains: _fromDomains, ...emailConfigStripped } = emailConfig;
+        void _fromDomains;
         const finalConfig: EmailConfig = {
-          ...emailConfig,
+          ...emailConfigStripped,
+          from: resolvedFrom,
           ...(resolvedReplyTo !== undefined ? { replyTo: resolvedReplyTo } : { replyTo: undefined }),
           ...(config?.attachments && config.attachments.length > 0
             ? { attachments: config.attachments }
@@ -134,12 +147,21 @@ function resolveReplyTo(
   return undefined;
 }
 
-function resolveEmailConfig(config?: DispatchConfig): EmailConfig | null {
+/**
+ * Internal carrier shape: the resolver may attach `fromDomains` (Phase 7 H6)
+ * onto the email config so `dispatch()` can pick a domain. We strip the
+ * field before the config reaches `sendEmail` — it's not part of EmailConfig.
+ */
+type ResolvedEmailConfig = EmailConfig & {
+  fromDomains?: Array<{ domain: string; default: boolean }>;
+};
+
+function resolveEmailConfig(config?: DispatchConfig): ResolvedEmailConfig | null {
   // 1. Try tenant-level config first
   if (config?.tenantConfig) {
     const tenantEmail = resolveTenantChannelConfig(config.tenantConfig, 'email');
     if (tenantEmail) {
-      return tenantEmail as unknown as EmailConfig;
+      return tenantEmail as unknown as ResolvedEmailConfig;
     }
   }
 
@@ -149,4 +171,82 @@ function resolveEmailConfig(config?: DispatchConfig): EmailConfig | null {
   }
 
   return null;
+}
+
+/**
+ * Phase 7 H6 — pick the sending domain via priority chain:
+ *   1. Rule-level override (`config.ruleFromDomainOverride`)
+ *   2. Tenant-level default in `fromDomains`
+ *   3. First entry in `fromDomains` (defensive — superRefine should
+ *      ensure exactly one default exists)
+ *   4. Legacy `from` string passed through verbatim (backward compat)
+ *
+ * When a domain is chosen from `fromDomains`, the local-part comes from
+ * the original `config.from` string — e.g.
+ *   `Notifications <notify@x.com>` → `Notifications <notify@chosen.com>`
+ *   `notify@x.com`                  → `notify@chosen.com`
+ *
+ * If `from` lacks an `@` and `fromDomains` is set, default the local-part
+ * to `notifications` (PRD doesn't specify; reasonable default).
+ */
+function resolveFromAddress(
+  emailConfig: ResolvedEmailConfig,
+  dispatchConfig?: DispatchConfig,
+): string {
+  const fromDomains = emailConfig.fromDomains;
+
+  // Step 4 — legacy single-domain (no fromDomains) → pass through verbatim
+  if (!fromDomains || fromDomains.length === 0) {
+    return emailConfig.from;
+  }
+
+  const ruleOverride = dispatchConfig?.ruleFromDomainOverride;
+  let chosenDomain: string | undefined;
+
+  // Step 1 — rule-level override (must match a verified domain in the list
+  // to be honored; otherwise fall through to tenant default).
+  if (ruleOverride && fromDomains.some((d) => d.domain === ruleOverride)) {
+    chosenDomain = ruleOverride;
+  }
+
+  // Step 2 — tenant-level default
+  if (!chosenDomain) {
+    const def = fromDomains.find((d) => d.default);
+    if (def) chosenDomain = def.domain;
+  }
+
+  // Step 3 — defensive: first entry
+  if (!chosenDomain) {
+    chosenDomain = fromDomains[0].domain;
+  }
+
+  return composeFromAddress(emailConfig.from, chosenDomain);
+}
+
+/**
+ * Combine the local-part of `originalFrom` with `chosenDomain`, preserving
+ * any RFC-5322 display name. Examples:
+ *   ('Notifications <notify@x.com>', 'alt.com') → 'Notifications <notify@alt.com>'
+ *   ('notify@x.com',                  'alt.com') → 'notify@alt.com'
+ *   ('',                              'alt.com') → 'notifications@alt.com'
+ */
+function composeFromAddress(originalFrom: string, chosenDomain: string): string {
+  // Try to extract `<local@domain>` from a display-name form first.
+  const angleMatch = originalFrom.match(/^(.*)<([^@>]+)@[^>]+>\s*$/);
+  if (angleMatch) {
+    const displayName = angleMatch[1].trim();
+    const localPart = angleMatch[2].trim();
+    return displayName.length > 0
+      ? `${displayName} <${localPart}@${chosenDomain}>`
+      : `${localPart}@${chosenDomain}`;
+  }
+
+  // Plain `local@domain` form
+  const atIdx = originalFrom.indexOf('@');
+  if (atIdx > 0) {
+    return `${originalFrom.slice(0, atIdx)}@${chosenDomain}`;
+  }
+
+  // No `@` at all → reasonable default local-part
+  return `notifications@${chosenDomain}`;
 }

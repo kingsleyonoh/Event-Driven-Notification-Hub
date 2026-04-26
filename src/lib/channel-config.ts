@@ -14,6 +14,11 @@ const channelSchemas: Record<string, z.ZodType> = {
  * Extracts and validates channel-specific credentials from a tenant's
  * config JSONB. Returns the typed config object or null if the channel
  * is not configured or the shape is invalid.
+ *
+ * For the email channel, the returned object includes `fromDomains` (Phase 7 H6)
+ * when configured — the dispatcher uses this list to resolve a sending domain
+ * via priority chain (rule override → tenant default). Absent → caller falls
+ * back to the legacy single-domain `from` string.
  */
 export function resolveTenantChannelConfig(
   tenantConfig: Record<string, unknown> | null,

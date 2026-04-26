@@ -12,6 +12,29 @@ export const notificationStatusEnum = z.enum([
 
 // ─── Tenant Channel Config ──────────────────────────────────────────
 
+// Phase 7 H6 — multi-domain support. Tenants may register multiple verified
+// Resend domains; one entry MUST have `default: true`. Per-rule overrides
+// (see `notification_rules.from_domain_override`) pick a non-default entry.
+const DOMAIN_REGEX = /^[a-z0-9.-]+$/i;
+
+export const fromDomainsSchema = z
+  .array(
+    z.object({
+      domain: z.string().regex(DOMAIN_REGEX),
+      default: z.boolean(),
+    }),
+  )
+  .min(1)
+  .superRefine((arr, ctx) => {
+    const defaults = arr.filter((e) => e.default);
+    if (defaults.length !== 1) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Exactly one fromDomains entry must have default: true',
+      });
+    }
+  });
+
 export const emailChannelConfigSchema = z.object({
   apiKey: z.string().min(1),
   from: z.string().min(1),
@@ -27,6 +50,12 @@ export const emailChannelConfigSchema = z.object({
   // keeps the resolved config minimal and avoids polluting downstream
   // equality assertions in tests.
   sandbox: z.boolean().optional(),
+  // Phase 7 H6 — list of verified sending domains. When set, the dispatcher
+  // chooses a domain via rule override → tenant default → first entry, and
+  // composes the final `From` string by combining the local-part of `from`
+  // with the chosen domain. Absent → legacy single-domain behavior (the
+  // `from` field is passed through verbatim).
+  fromDomains: fromDomainsSchema.optional(),
 });
 
 export const telegramChannelConfigSchema = z.object({
@@ -43,6 +72,15 @@ export const tenantChannelConfigSchema = z.object({
 
 // ─── Rules ───────────────────────────────────────────────────────────
 
+// Phase 7 H6 — per-rule sending-domain override. Validated against the
+// same simple domain regex used by `fromDomains`. Nullable so callers can
+// clear an override on update.
+export const fromDomainOverrideSchema = z
+  .string()
+  .regex(DOMAIN_REGEX)
+  .nullable()
+  .optional();
+
 export const createRuleSchema = z.object({
   event_type: z.string().min(1),
   channel: channelEnum,
@@ -51,6 +89,7 @@ export const createRuleSchema = z.object({
   recipient_value: z.string().min(1),
   urgency: urgencyEnum.optional().default('normal'),
   enabled: z.boolean().optional().default(true),
+  from_domain_override: fromDomainOverrideSchema,
 });
 
 export const updateRuleSchema = z.object({
@@ -61,6 +100,7 @@ export const updateRuleSchema = z.object({
   recipient_value: z.string().min(1).optional(),
   urgency: urgencyEnum.optional(),
   enabled: z.boolean().optional(),
+  from_domain_override: fromDomainOverrideSchema,
 });
 
 // ─── Templates ───────────────────────────────────────────────────────

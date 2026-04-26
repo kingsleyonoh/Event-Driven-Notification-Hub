@@ -19,8 +19,10 @@ export const rulesRoutes = fp<RulesRoutesOptions>(async (app, opts) => {
       throw new ValidationError('Invalid rule data', parsed.error.issues.map((i) => i.message));
     }
 
-    const { event_type, channel, template_id, recipient_type, recipient_value, urgency, enabled } =
-      parsed.data;
+    const {
+      event_type, channel, template_id, recipient_type, recipient_value, urgency, enabled,
+      from_domain_override,
+    } = parsed.data;
 
     try {
       const [rule] = await db
@@ -34,6 +36,9 @@ export const rulesRoutes = fp<RulesRoutesOptions>(async (app, opts) => {
           recipientValue: recipient_value,
           urgency,
           enabled,
+          ...(from_domain_override !== undefined
+            ? { fromDomainOverride: from_domain_override }
+            : {}),
         })
         .returning();
 
@@ -92,6 +97,9 @@ export const rulesRoutes = fp<RulesRoutesOptions>(async (app, opts) => {
     if (data.recipient_value !== undefined) updates.recipientValue = data.recipient_value;
     if (data.urgency !== undefined) updates.urgency = data.urgency;
     if (data.enabled !== undefined) updates.enabled = data.enabled;
+    if (data.from_domain_override !== undefined) {
+      updates.fromDomainOverride = data.from_domain_override;
+    }
     updates.updatedAt = new Date();
 
     const [rule] = await db

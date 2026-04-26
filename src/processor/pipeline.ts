@@ -24,6 +24,8 @@ interface RuleRecord {
   recipientValue: string;
   urgency: string;
   enabled: boolean;
+  // Phase 7 H6 — optional per-rule sending-domain override.
+  fromDomainOverride?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -301,6 +303,11 @@ export async function processNotification(
     ...(eventReplyTo ? { eventReplyTo } : {}),
     ...(renderedHeaders ? { headers: renderedHeaders } : {}),
     ...(renderedBodyText ? { text: renderedBodyText } : {}),
+    // Phase 7 H6 — propagate per-rule sending-domain override to the
+    // dispatcher's domain-priority chain (rule override → tenant default).
+    ...(rule.channel === 'email' && rule.fromDomainOverride
+      ? { ruleFromDomainOverride: rule.fromDomainOverride }
+      : {}),
   };
   const result = await dispatch(rule.channel, deliveryAddress, renderedSubject, renderedBody, {
     tenantId, notificationId: notif.id, eventType,
