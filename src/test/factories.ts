@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import { tenants, templates, notificationRules, userPreferences, notifications, digestQueue } from '../db/schema.js';
+import { tenants, templates, notificationRules, userPreferences, notifications, digestQueue, tenantSuppressions } from '../db/schema.js';
 import type { Database } from '../db/client.js';
 
 export async function createTestTenant(
@@ -101,5 +101,6 @@ export async function cleanupTestData(db: Database, tenantId: string) {
   await db.delete(notificationRules).where(eq(notificationRules.tenantId, tenantId));
   await db.delete(templates).where(eq(templates.tenantId, tenantId));
   await db.delete(userPreferences).where(eq(userPreferences.tenantId, tenantId));
+  await db.delete(tenantSuppressions).where(eq(tenantSuppressions.tenantId, tenantId));
   await db.delete(tenants).where(eq(tenants.id, tenantId));
 }

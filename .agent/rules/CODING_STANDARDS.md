@@ -1,6 +1,6 @@
 # Event-Driven Notification Hub — Coding Standards
 
-> Part 1 of 4. Also loaded: `CODING_STANDARDS_TESTING.md`, `CODING_STANDARDS_TESTING_LIVE.md`, `CODING_STANDARDS_DOMAIN.md`
+> Part 1 of 6. Also loaded: `CODING_STANDARDS_META.md` (skills, env, git branching), `CODING_STANDARDS_TESTING.md` (core TDD), `CODING_STANDARDS_TESTING_LIVE.md` (mock policy + backend integration), `CODING_STANDARDS_TESTING_E2E.md` (E2E), `CODING_STANDARDS_DOMAIN.md` (deploy/security)
 
 These rules are ALWAYS ACTIVE. Follow them on every response without being asked.
 
@@ -24,7 +24,7 @@ This applies to ALL approval gates: batch selection, implementation plans, RED/G
 
 ## Domain-Specific Rules
 
-If your task touches any of the domains below, **also read the corresponding rules file before starting**. These files contain deeper conventions than fit here.
+If your task touches any of the domains below, **also read the corresponding rules file before starting**.
 
 | When working on... | Also read |
 |--------------------|-----------|
@@ -34,34 +34,6 @@ If your task touches any of the domains below, **also read the corresponding rul
 | API endpoints / serializers / validation | `.agent/rules/api_rules.md` (if exists) |
 
 > These files are created by `/bootstrap` when a domain has 5+ concentrated conventions. If a file doesn't exist for a domain, the relevant rules are here in CODING_STANDARDS.md.
-
-
-## Skill Selection & Orchestration
-You have a vast library of specialized skills available. **Use them proactively** — don't wing it when a skill exists for the task.
-
-### How Skill Selection Works
-1. **Before starting any implementation task**, mentally scan your available skills for matches.
-2. If a relevant skill exists, **read its SKILL.md first** using `view_file`, then follow its guidance.
-3. **Announce your choice**: *"I am invoking the [skill-name] skill to ensure this follows best practices."*
-4. When multiple skills could apply, invoke the most specific one (e.g., `react-patterns` over `frontend-design` for a React component).
-5. **When in doubt, invoke the skill.** Reading a SKILL.md costs 30 seconds. Getting it wrong costs hours.
-
-### When to Invoke Skills (Non-Negotiable)
-- **Building with a specific framework/library** → find the matching skill (React, Next.js, Django, FastAPI, etc.)
-- **Touching security** (auth, input validation, secrets, API exposure) → invoke a security skill
-- **Writing tests** → invoke the testing skill for your language/framework
-- **Designing a database schema or API** → invoke the design/architecture skill
-- **Debugging a bug** → invoke `systematic-debugging` before guessing
-- **Deploying or containerizing** → invoke the deployment skill for your platform
-- **Integrating a payment provider, email service, or external API** → check for a dedicated skill first
-- **Working with AI/LLM features** → invoke the relevant AI skill (RAG, agents, prompts)
-- **Writing documentation** → invoke the documentation skill for the format you need
-- **Unfamiliar domain or new library** → research skill first, then build
-
-### What NOT to Do
-- ❌ Skip skills because "I already know this" — the skill may have guardrails you'd miss
-- ❌ Hardcode patterns from memory when a skill has the latest best practices
-- ❌ Use a generic approach when a project-specific skill exists
 
 ## Git Commit Convention
 
@@ -80,14 +52,16 @@ You have a vast library of specialized skills available. **Use them proactively*
 **Scope** = the module or area affected. Valid scopes for this project:
 - `consumer` — Kafka consumer, event routing
 - `processor` — notification pipeline, dedup, preferences
-- `channels` — email, sms, in-app handlers
+- `channels` — email, sms, in-app, telegram handlers
 - `templates` — Handlebars rendering
 - `digest` — digest engine, batching
-- `api` — REST endpoints (rules, templates, preferences, notifications)
+- `api` — REST endpoints (rules, templates, preferences, notifications, admin, events)
 - `ws` — WebSocket handler
 - `db` — schema, migrations, client
 - `config` — environment, configuration
-- `auth` — API key middleware
+- `auth` — API key middleware, admin auth
+- `heartbeat` — liveness monitoring
+- `jobs` — background scheduler
 - `workflows` — AI workflow system
 
 **Rules:**
@@ -113,7 +87,7 @@ chore(workflows): add sprint velocity to resume workflow
 - If you think something SHOULD be added, ASK the user first. Never add it silently.
 
 ### No Phantom Dependencies
-- **NEVER import a package that isn't in the dependency file** (requirements.txt / package.json / etc). Add it FIRST, then use it.
+- **NEVER import a package that isn't in `package.json`.** Add it FIRST, then use it.
 - Before using any library method, **verify it exists** in that version. Don't hallucinate API methods.
 
 ### No Placeholder Code
@@ -124,8 +98,28 @@ chore(workflows): add sprint velocity to resume workflow
 - If unsure, say so and check rather than assuming.
 
 ### No Silent Failures
-- **NEVER write code that swallows errors silently.** Every `except`/`catch` block must either re-raise, log, or return a meaningful error.
-- `except: pass` / `catch {}` is permanently BANNED.
+- **NEVER write code that swallows errors silently.** Every `catch` block must either re-raise, log, or return a meaningful error.
+- `catch {}` is permanently BANNED.
+
+### No Silent Workarounds (CRITICAL — Prevents Hidden Schema/Spec Gaps)
+- **NEVER hardcode a value that should come from config, schema, or API response** to "make the test pass."
+- Template token fails to resolve? Schema field missing? Context API missing data? **STOP.** Either (1) extend the schema in this batch if PRD already specifies the field, or (2) escalate as `SILENT_WORKAROUND` and wait for user decision.
+- Banned pattern: literal tenant identity strings (legal names, addresses, emails, registrations, wordmarks) written into Handlebars templates, email bodies, or any config-driven surface. Single-tenant fixtures mask this — it leaks in production.
+- **Also banned:** silently compacting/shrinking/truncating a file to hit a size limit (dropping bullets from a rules file, collapsing entries in a catalog, removing rows from a table to fit under 10K). The fix for an oversized knowledge file is the directory-per-kind pattern below, not truncation.
+- Applies manual + `/implement-next` + `/yolo`. See `yolo-honesty-checks.md` §8 for the full trigger table, rejected-pattern examples, and Option A/B/C routing.
+
+### Append-Only Knowledge Files Banned (CRITICAL — Prevents Recurring Splits)
+- **NEVER grow a single file with entries of unbounded cardinality.** New gotcha / pattern / module / foundation primitive / build-journal batch → new file.
+- Canonical directory-per-kind locations:
+  - `.agent/knowledge/patterns/` — `NNN-slug.md`
+  - `.agent/knowledge/gotchas/` — `YYYY-MM-DD-slug.md`
+  - `.agent/knowledge/modules/` — filename mirrors source path
+  - `.agent/knowledge/foundation/` — `category-slug.md`
+  - `.agent/knowledge/checks/` — `{failure_type}-{slug}.md` (written by `yolo-subagent-reinforce`; retire via `/audit-reinforcements`)
+  - `docs/build-journal/` — `NNN-batch.md`
+- Each directory has `_index.md` (catalog the AI rewrites on add/rename/delete — NOT a growing file).
+- **Exempt** (bounded cardinality): `CODING_STANDARDS*.md`, workflow stubs, `CODEBASE_CONTEXT.md` tables, PRD sections.
+- **When unsure:** assume unbounded and use a directory. Recurring "split this file" work is firefighting — the fire is the append-only architecture.
 
 ### No Over-Engineering
 - Match the spec's complexity level. No abstractions without 2+ concrete implementations.
@@ -138,43 +132,36 @@ chore(workflows): add sprint velocity to resume workflow
 
 ### Full Read Rule (CRITICAL — Prevents Context Loss)
 - **When ANY workflow instructs you to "read" a file, you MUST read the ENTIRE file from first line to last line.**
-- If the file is longer than your read limit, make multiple sequential read calls (e.g., lines 1–200, 201–400, 401–end) until **every line has been read.**
+- If the file is longer than your read limit, make multiple sequential read calls until **every line has been read.**
 - Do NOT read a partial subset and assume you understand the rest. Critical rules, patterns, and constraints are often buried later in the file.
 - This applies universally to: PRD, `progress.md`, `CODING_STANDARDS.md`, `CODEBASE_CONTEXT.md`, Shared Foundation files, source files referenced in tasks, and any other file a workflow tells you to read.
 
 ### Read Shared Foundation Before Coding (CRITICAL — Prevents Duplication)
-- Before writing ANY new utility, helper, middleware, handler, component, or shared pattern, read every file listed in the **Shared Foundation** table in `CODEBASE_CONTEXT.md`.
+- Before writing ANY new utility, helper, middleware, handler, component, or shared pattern, read every file listed in `.agent/knowledge/foundation/_index.md` and the relevant per-primitive files.
 - If a pattern, function, or module already exists there — **USE IT.** Do not recreate it.
 - This applies to EVERY implementation task, regardless of which workflow triggered it.
 
 ### Workflow Discipline
-- **Max 25 workflow files** in `.agent/workflows/`. If approaching 25, retire rarely-used workflows or convert procedural knowledge to global Antigravity skills.
+- **Max 30 workflow files** in `.agent/workflows/`. If approaching 30, retire rarely-used workflows or convert procedural knowledge to reusable global skills.
 - Before creating a new workflow, check if an existing one can be extended.
 
 ### Search Before Creating (CRITICAL — Prevents Duplicate Code)
 - **Before creating ANY new file, function, class, or utility**, search the codebase first:
-  1. `grep_search` for the function/class name
-  2. `find_by_name` for the file name
-  3. Check relevant module exports / `__init__` files
+  1. Search file contents for the function/class name
+  2. Search for the file by name
+  3. Check relevant module exports / barrel files
 - If it already exists, **USE IT**. Do not recreate it.
 - If a similar function exists, **extend it** — don't create a parallel version.
 - When in doubt, **ASK the user**: "I can't find X — does it exist, or should I create it?"
 
 ### Respect .gitignore (CRITICAL — Prevents Accidental Exposure)
-- **NEVER use `git add -f`** on any file. If a file isn't staged after `git add .`, it's correctly gitignored.
-- Files that are gitignored and must NEVER be committed: `docs/progress.md`, `docs/build-journal.md`, `.agent/workflows/`, `.agent/guides/`, `CLAUDE.md`, `.claude/`, `AGENTS.md`, `.cursorrules`
-- If `git status` shows these as untracked, that is CORRECT — do not try to add them.
-
-### Use Skills When Available (Skills > Pre-trained Knowledge)
-- Before implementing any task, scan your available skills list for domain matches.
-- If a matching skill exists (e.g., database → `postgresql`, auth → `auth-implementation-patterns`, payments → `stripe-integration`), read its `SKILL.md` and follow its instructions.
-- **CRITICAL:** The patterns, architectures, and rules defined in a `SKILL.md` STRICTLY OVERRIDE your general pre-trained knowledge. Always choose the skill's approach over what you "think you know."
-- **Always announce:** *"Using skill: [skill-name] for this task."* so the user knows which patterns are being applied.
-- If no skill matches, proceed normally.
+- **NEVER run `git add -f` on ANY file.** If a file is gitignored, it is gitignored ON PURPOSE.
+- `docs/progress.md`, `docs/build-journal/`, `docs/architect_journal.md`, `docs/yolo-inbox.md`, `.agent/workflows/`, `.agent/guides/`, `.agent/agents/`, `.agent/.last-sync`, `.yolo/`, `.claude/`, and PRD files are LOCAL working files (tracked during dev via the `⚠️ TRACKED DURING DEV` pattern, stripped by `/prepare-public`). They must NEVER end up in a public release.
+- **Proprietary files are tracked during development** so all platforms can reference them. `.gitignore` has commented-out entries marked `⚠️ TRACKED DURING DEV` — this is the default. Run `/prepare-public` before making the repo public.
+- If `git status` doesn't show a file as staged after `git add .`, that means `.gitignore` is working correctly. **Do not "fix" it.**
+- The ONLY acceptable staging command is `git add .` (which respects `.gitignore`).
 
 ## File Size Limits
 - **Max 300 lines** per source file. If approaching 250, plan to split.
 - **Max 50 lines** per function/method.
 - **Max 200 lines** per class.
-
-

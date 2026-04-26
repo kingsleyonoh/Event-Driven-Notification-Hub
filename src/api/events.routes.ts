@@ -7,6 +7,7 @@ import { matchRules, resolveRecipient } from '../consumer/router.js';
 import { processNotification } from '../processor/pipeline.js';
 import { tenants } from '../db/schema.js';
 import { createLogger } from '../lib/logger.js';
+import { resolveTenantEventsRateLimit } from './middleware/rate-limiter.js';
 import type { Database } from '../db/client.js';
 
 const logger = createLogger('events');
@@ -28,7 +29,29 @@ export const eventsRoutes = fp<EventsRoutesOptions>(async (app, opts) => {
 
   app.post(
     '/api/events',
-    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    {
+      config: {
+        rateLimit: {
+          // Phase 7 H7 — per-tenant configurable rate limit.
+          // `keyGenerator` scopes the bucket to the authenticated tenant
+          // (NOT the IP), and `max` resolves dynamically from
+          // `tenants.config.rate_limits.events_per_minute` via the
+          // resolver helper. We use `hook: 'preHandler'` so this rate
+          // check runs AFTER `authPlugin`'s `onRequest` has attached
+          // `request.tenant` / `request.tenantId`. The default
+          // `onRequest` hook would fire too early — auth wouldn't have
+          // resolved the tenant yet, max would always default.
+          hook: 'preHandler' as const,
+          max: (request: { tenant?: { config: Record<string, unknown> | null } | null }) => {
+            return resolveTenantEventsRateLimit(request.tenant ?? null);
+          },
+          keyGenerator: (request: { tenantId?: string; ip?: string }) => {
+            return request.tenantId ?? request.ip ?? 'anonymous';
+          },
+          timeWindow: '1 minute',
+        },
+      },
+    },
     async (request, reply) => {
       const parsed = publishEventSchema.safeParse(request.body);
       if (!parsed.success) {

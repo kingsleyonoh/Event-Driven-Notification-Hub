@@ -16,6 +16,7 @@ export const tenants = pgTable('tenants', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   apiKey: text('api_key').notNull().unique(),
+  deliveryCallbackSecret: text('delivery_callback_secret'),
   config: jsonb('config').default({}).$type<Record<string, unknown>>(),
   enabled: boolean('enabled').default(true).notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -34,11 +35,27 @@ export const templates = pgTable(
     channel: text('channel', { enum: ['email', 'sms', 'in_app', 'telegram'] }).notNull(),
     subject: text('subject'),
     body: text('body').notNull(),
+    bodyText: text('body_text'),
+    // Phase 7 H9 — locale variant. Default 'en'. Existing rows backfilled to 'en'.
+    locale: text('locale').notNull().default('en'),
+    replyTo: text('reply_to'),
+    attachmentsConfig: jsonb('attachments_config').$type<
+      Array<{ filename_template: string; url_field: string }>
+    >(),
+    headers: jsonb('headers').$type<Record<string, string>>(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => [
-    unique('templates_tenant_name_unique').on(table.tenantId, table.name),
+    // Phase 7 7b — extended H9 constraint to include `channel` so a tenant
+    // can have per-channel `__digest` variants (email + telegram) for the
+    // same locale. See migration 0013.
+    unique('templates_tenant_name_locale_channel_unique').on(
+      table.tenantId,
+      table.name,
+      table.locale,
+      table.channel,
+    ),
   ],
 );
 
@@ -63,6 +80,11 @@ export const notificationRules = pgTable(
     })
       .default('normal')
       .notNull(),
+    // Phase 7 H6 — optional per-rule sending-domain override. When set,
+    // the dispatcher uses this domain to construct the `From` address
+    // (combined with the local-part from the tenant's email config),
+    // overriding the tenant-level fromDomains default.
+    fromDomainOverride: text('from_domain_override'),
     enabled: boolean('enabled').default(true).notNull(),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
@@ -127,12 +149,16 @@ export const notifications = pgTable(
     subject: text('subject'),
     bodyPreview: text('body_preview'),
     payload: jsonb('payload').$type<Record<string, unknown>>(),
+    // Phase 7 7b — tenant pass-through metadata (request_id, trace_id, etc.)
+    // Pipeline copies `event.payload._metadata` (if present) verbatim.
+    metadata: jsonb('metadata').$type<Record<string, unknown>>(),
     status: text('status', {
-      enum: ['pending', 'sent', 'failed', 'queued_digest', 'skipped', 'held'],
+      enum: ['pending', 'sent', 'sent_sandbox', 'failed', 'queued_digest', 'skipped', 'held'],
     }).notNull(),
     skipReason: text('skip_reason'),
     errorMessage: text('error_message'),
     deliveredAt: timestamp('delivered_at'),
+    bounceType: text('bounce_type'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => [
@@ -173,6 +199,69 @@ export const digestQueue = pgTable(
       table.sent,
     ),
     index('digest_scheduled_for_idx').on(table.scheduledFor),
+  ],
+);
+
+// ─── Email Delivery Events (Section 7 H4) ───────────────────────────
+// Persists Resend webhook events (delivered/bounced/complained/etc).
+// `notification_id` is nullable because the webhook may arrive before
+// correlation succeeds (e.g. metadata stripped) — we still keep the
+// event for audit. `callback_status_code` is nullable until the tenant
+// callback fires.
+
+export const emailDeliveryEvents = pgTable(
+  'email_delivery_events',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    notificationId: uuid('notification_id').references(() => notifications.id, {
+      onDelete: 'set null',
+    }),
+    resendEmailId: text('resend_email_id').notNull(),
+    eventType: text('event_type').notNull(),
+    rawPayload: jsonb('raw_payload').$type<Record<string, unknown>>().notNull(),
+    callbackStatusCode: integer('callback_status_code'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    index('email_delivery_events_tenant_created_idx').on(
+      table.tenantId,
+      table.createdAt.desc(),
+    ),
+    index('email_delivery_events_resend_email_id_idx').on(table.resendEmailId),
+  ],
+);
+
+// ─── Tenant Suppressions (Section 13 Phase 7 H10) ───────────────────
+// Per-tenant suppression list — a pre-dispatch guard for email/sms/telegram.
+// `recipient` is stored lowercased and queried case-insensitively. `expires_at`
+// NULL means permanent suppression. Auto-populated on hard bounces / complaints
+// from the Resend webhook, plus manual entries via the suppressions API.
+
+export const tenantSuppressions = pgTable(
+  'tenant_suppressions',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id, { onDelete: 'cascade' }),
+    recipient: text('recipient').notNull(),
+    reason: text('reason').notNull(),
+    expiresAt: timestamp('expires_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [
+    unique('tenant_suppressions_tenant_recipient_unique').on(
+      table.tenantId,
+      table.recipient,
+    ),
+    index('tenant_suppressions_lookup_idx').on(
+      table.tenantId,
+      table.recipient,
+      table.expiresAt,
+    ),
   ],
 );
 

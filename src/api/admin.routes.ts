@@ -2,7 +2,12 @@ import crypto from 'node:crypto';
 import fp from 'fastify-plugin';
 import { eq } from 'drizzle-orm';
 import { tenants } from '../db/schema.js';
-import { createTenantSchema, updateTenantSchema } from './schemas.js';
+import {
+  createTenantSchema,
+  updateTenantSchema,
+  updateTenantRateLimitSchema,
+  tenantChannelConfigSchema,
+} from './schemas.js';
 import { ValidationError, NotFoundError } from '../lib/errors.js';
 import type { Database } from '../db/client.js';
 
@@ -23,9 +28,19 @@ function generateApiKey(): string {
   return crypto.randomBytes(24).toString('hex');
 }
 
+/**
+ * Mint a 32-byte hex `delivery_callback_secret` per tenant. Used to
+ * HMAC-sign outbound delivery callbacks (Phase 7 H4) — returned ONCE on
+ * tenant create alongside `apiKey`. The plaintext is NEVER returned by
+ * any subsequent GET; subsequent rotation is a future endpoint.
+ */
+function generateDeliveryCallbackSecret(): string {
+  return crypto.randomBytes(32).toString('hex');
+}
+
 /** Strip secrets from tenant before sending to client */
 function sanitizeTenant(tenant: Record<string, unknown>) {
-  const { apiKey, config, ...safe } = tenant;
+  const { apiKey, config, deliveryCallbackSecret: _redactedSecret, ...safe } = tenant;
   // Mask API key — only show last 8 chars
   const maskedKey = typeof apiKey === 'string'
     ? `${'*'.repeat(Math.max(0, apiKey.length - 8))}${apiKey.slice(-8)}`
@@ -63,17 +78,44 @@ export const adminRoutes = fp<AdminRoutesOptions>(async (app, opts) => {
 
     const { name, config } = parsed.data;
 
+    // Phase 7 7b — validate the freeform `config` JSONB shape against
+    // tenantChannelConfigSchema (channels.email, channels.telegram, rate_limits).
+    // Reject malformed config at WRITE time instead of dispatch time.
+    if (config !== undefined) {
+      const cfg = tenantChannelConfigSchema.safeParse(config);
+      if (!cfg.success) {
+        throw new ValidationError(
+          'Invalid tenant config',
+          cfg.error.issues.map((i) => i.message),
+        );
+      }
+    }
+
+    // Mint both secrets at create time. `deliveryCallbackSecret` is returned
+    // ONCE on this response and never again — the sanitizer strips it on
+    // subsequent GETs. Tenants must capture it now (or rotate later).
+    const deliveryCallbackSecret = generateDeliveryCallbackSecret();
+
     const [tenant] = await db
       .insert(tenants)
       .values({
         id: generateId(name),
         name,
         apiKey: generateApiKey(),
+        deliveryCallbackSecret,
         config: config ?? {},
       })
       .returning();
 
-    return reply.status(201).send({ tenant });
+    // Return the unredacted apiKey AND the one-time delivery_callback_secret.
+    // The sanitizer is intentionally NOT applied here — create-time response
+    // is the only legitimate channel for these plaintext secrets.
+    return reply.status(201).send({
+      tenant: {
+        ...(tenant as Record<string, unknown>),
+        deliveryCallbackSecret,
+      },
+    });
   });
 
   // GET /api/admin/tenants
@@ -109,6 +151,17 @@ export const adminRoutes = fp<AdminRoutesOptions>(async (app, opts) => {
       throw new ValidationError('Invalid tenant data', parsed.error.issues.map((i) => i.message));
     }
 
+    // Phase 7 7b — validate freeform `config` shape on update too.
+    if (parsed.data.config !== undefined) {
+      const cfg = tenantChannelConfigSchema.safeParse(parsed.data.config);
+      if (!cfg.success) {
+        throw new ValidationError(
+          'Invalid tenant config',
+          cfg.error.issues.map((i) => i.message),
+        );
+      }
+    }
+
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     const data = parsed.data;
     if (data.name !== undefined) updates.name = data.name;
@@ -124,6 +177,53 @@ export const adminRoutes = fp<AdminRoutesOptions>(async (app, opts) => {
     if (!tenant) {
       throw new NotFoundError(`Tenant ${request.params.id} not found`);
     }
+
+    return { tenant: sanitizeTenant(tenant as unknown as Record<string, unknown>) };
+  });
+
+  // PATCH /api/admin/tenants/:id/rate-limit — Phase 7 H7
+  // Updates `tenants.config.rate_limits.events_per_minute` while
+  // preserving the rest of `tenants.config`. Rate-limited modestly
+  // because it's an admin-only mutation that shouldn't be hot-pathed.
+  app.patch<{ Params: { id: string } }>('/api/admin/tenants/:id/rate-limit', {
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (request) => {
+    const parsed = updateTenantRateLimitSchema.safeParse(request.body);
+    if (!parsed.success) {
+      throw new ValidationError(
+        'Invalid rate-limit data',
+        parsed.error.issues.map((i) => i.message),
+      );
+    }
+
+    // Load existing tenant config to preserve unrelated keys.
+    const [existing] = await db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.id, request.params.id));
+
+    if (!existing) {
+      throw new NotFoundError(`Tenant ${request.params.id} not found`);
+    }
+
+    const currentConfig =
+      (existing.config as Record<string, unknown> | null) ?? {};
+    const currentRateLimits =
+      (currentConfig.rate_limits as Record<string, unknown> | undefined) ?? {};
+
+    const nextConfig: Record<string, unknown> = {
+      ...currentConfig,
+      rate_limits: {
+        ...currentRateLimits,
+        events_per_minute: parsed.data.events_per_minute,
+      },
+    };
+
+    const [tenant] = await db
+      .update(tenants)
+      .set({ config: nextConfig, updatedAt: new Date() })
+      .where(eq(tenants.id, request.params.id))
+      .returning();
 
     return { tenant: sanitizeTenant(tenant as unknown as Record<string, unknown>) };
   });

@@ -1,5 +1,7 @@
 import fp from 'fastify-plugin';
 import { Kafka } from 'kafkajs';
+import { gte, count } from 'drizzle-orm';
+import { emailDeliveryEvents } from '../db/schema.js';
 import type { Database } from '../db/client.js';
 
 interface HealthRoutesOptions {
@@ -34,6 +36,27 @@ async function checkKafka(brokers: string[]): Promise<boolean> {
   } catch {
     try { await admin.disconnect(); } catch { /* ignore */ }
     return false;
+  }
+}
+
+/**
+ * Phase 7 7b — count email_delivery_events rows in the last 24 hours.
+ * Proxy for "is the H4 callback flow healthy?" Low count = either healthy
+ * production traffic OR Resend webhook misconfigured. Global (cross-tenant)
+ * because `/api/health` is a public/global endpoint.
+ */
+async function emailDeliveryEvents24hCount(db: Database): Promise<number> {
+  try {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [row] = await db
+      .select({ value: count() })
+      .from(emailDeliveryEvents)
+      .where(gte(emailDeliveryEvents.createdAt, since));
+    return Number(row?.value ?? 0);
+  } catch {
+    // Never fail the health check on this axis — it's an observability hint,
+    // not a liveness signal.
+    return 0;
   }
 }
 
@@ -78,10 +101,14 @@ export const healthRoutes = fp<HealthRoutesOptions>(async (app, opts) => {
     const coreOk = pgOk && resendOk && (kafkaOk === null || kafkaOk);
     const allDown = !pgOk && !resendOk;
 
+    // Phase 7 7b — observability axis (not a liveness gate).
+    const eventsCount = await emailDeliveryEvents24hCount(db);
+
     const response: Record<string, unknown> = {
       status: coreOk ? 'ok' : allDown ? 'down' : 'degraded',
       pg: pgOk,
       resend: resendOk,
+      email_delivery_events_24h_count: eventsCount,
     };
 
     if (kafkaOk !== null) {

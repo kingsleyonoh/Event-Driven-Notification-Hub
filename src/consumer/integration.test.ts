@@ -158,6 +158,7 @@ describe('End-to-end: Event → Notification Pipeline', () => {
       'Resend Test',
       'Email body for TestUser',
       { apiKey: 're_test', from: 'noreply@test.com' },
+      expect.objectContaining({ tenantId: tenantA.id }),
     );
   });
 

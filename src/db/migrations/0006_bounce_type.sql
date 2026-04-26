@@ -1,0 +1,1 @@
+ALTER TABLE "notifications" ADD COLUMN "bounce_type" text;

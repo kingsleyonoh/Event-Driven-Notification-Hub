@@ -214,3 +214,131 @@ describe('processDigestQueue', () => {
     expect(body).toContain('Hello Bob, v2.0 is live');
   });
 });
+
+// Phase 7 7b — locale variants of __digest template + per-channel digests
+describe('processDigestQueue — locale variants and per-channel (Phase 7 7b)', () => {
+  let multiTenant: Awaited<ReturnType<typeof createTestTenant>>;
+  let enRuleTmpl: Awaited<ReturnType<typeof createTestTemplate>>;
+  let enRule: Awaited<ReturnType<typeof createTestRule>>;
+
+  beforeAll(async () => {
+    multiTenant = await createTestTenant(db);
+
+    // English (default) email digest template — exists for tenant
+    await createTestTemplate(db, multiTenant.id, {
+      name: '__digest',
+      channel: 'email',
+      locale: 'en',
+      subject: 'EN digest ({{count}})',
+      body: 'EN digest body — {{count}} items, locale={{locale}}',
+    });
+
+    // German email digest variant
+    await createTestTemplate(db, multiTenant.id, {
+      name: '__digest',
+      channel: 'email',
+      locale: 'de',
+      subject: 'DE Zusammenfassung ({{count}})',
+      body: 'DE digest body — {{count}} Einträge, locale={{locale}}',
+    });
+
+    // Telegram digest template (en only)
+    await createTestTemplate(db, multiTenant.id, {
+      name: '__digest',
+      channel: 'telegram',
+      locale: 'en',
+      subject: null,
+      body: 'TG digest — {{count}} updates',
+    });
+
+    // Per-event rule template (used by child notifications)
+    enRuleTmpl = await createTestTemplate(db, multiTenant.id, {
+      name: 'multi-template',
+      channel: 'email',
+      subject: '{{title}}',
+      body: 'Body {{title}}',
+    });
+    enRule = await createTestRule(db, multiTenant.id, enRuleTmpl.id, {
+      eventType: 'multi.test',
+      recipientType: 'event_field',
+      recipientValue: 'user_id',
+    });
+  });
+
+  afterAll(async () => {
+    await cleanupTestData(db, multiTenant.id);
+  });
+
+  beforeEach(async () => {
+    await db.delete(digestQueue).where(eq(digestQueue.tenantId, multiTenant.id));
+    await db.delete(notifications).where(eq(notifications.tenantId, multiTenant.id));
+    vi.clearAllMocks();
+  });
+
+  async function seedItem(userId: string, channel: 'email' | 'telegram', payload: Record<string, unknown>) {
+    try {
+      await createTestPreferences(db, multiTenant.id, userId, {
+        email: `${userId}@test.com`,
+        telegramChatId: `tg-${userId}`,
+      });
+    } catch {
+      // already exists
+    }
+    const notif = await createTestNotification(db, {
+      tenantId: multiTenant.id,
+      ruleId: enRule.id,
+      eventType: 'multi.test',
+      eventId: `multi-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      recipient: userId,
+      channel,
+      status: 'queued_digest',
+      payload,
+    });
+    await db.insert(digestQueue).values({
+      tenantId: multiTenant.id,
+      userId,
+      notificationId: notif.id,
+      scheduledFor: new Date(Date.now() - 60_000),
+    });
+    return notif;
+  }
+
+  it('renders the de variant of __digest when payload.locale is "de"', async () => {
+    const { sendEmail } = await import('../channels/email.js');
+
+    await seedItem('locale-user-de', 'email', { user_id: 'locale-user-de', title: 'T', locale: 'de' });
+
+    await processDigestQueue(db, emailConfig);
+
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const subject = vi.mocked(sendEmail).mock.calls[0][1];
+    const body = vi.mocked(sendEmail).mock.calls[0][2];
+    expect(subject).toContain('DE Zusammenfassung');
+    expect(body).toContain('locale=de');
+  });
+
+  it('falls back to en variant when payload.locale is unknown (e.g., "fr")', async () => {
+    const { sendEmail } = await import('../channels/email.js');
+
+    await seedItem('locale-user-fr', 'email', { user_id: 'locale-user-fr', title: 'T', locale: 'fr' });
+
+    await processDigestQueue(db, emailConfig);
+
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const subject = vi.mocked(sendEmail).mock.calls[0][1];
+    expect(subject).toContain('EN digest');
+  });
+
+  it('groups by channel and skips telegram items when no telegramConfig is provided', async () => {
+    const { sendEmail } = await import('../channels/email.js');
+
+    await seedItem('multi-user', 'email', { user_id: 'multi-user', title: 'E1' });
+    await seedItem('multi-user', 'telegram', { user_id: 'multi-user', title: 'T1' });
+
+    const sent = await processDigestQueue(db, emailConfig);
+
+    // email digest sent, telegram skipped (no config)
+    expect(sent).toBe(1);
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+  });
+});

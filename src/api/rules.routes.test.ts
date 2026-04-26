@@ -79,6 +79,7 @@ describe('Rules CRUD API', () => {
 
   it('POST /api/rules — rejects duplicate rule', async () => {
     const app = await buildTestApp();
+    // Phase 7 7b — recipient validation requires email-shape on email channel.
     // Create first
     await app.inject({
       method: 'POST',
@@ -86,7 +87,7 @@ describe('Rules CRUD API', () => {
       headers: headers(),
       payload: {
         event_type: 'dup.test',
-        channel: 'sms',
+        channel: 'email',
         template_id: template.id,
         recipient_type: 'static',
         recipient_value: 'dup@example.com',
@@ -100,7 +101,7 @@ describe('Rules CRUD API', () => {
       headers: headers(),
       payload: {
         event_type: 'dup.test',
-        channel: 'sms',
+        channel: 'email',
         template_id: template.id,
         recipient_type: 'static',
         recipient_value: 'dup@example.com',

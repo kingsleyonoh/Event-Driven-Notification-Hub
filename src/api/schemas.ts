@@ -7,39 +7,171 @@ export const urgencyEnum = z.enum(['low', 'normal', 'high', 'critical']);
 export const recipientTypeEnum = z.enum(['event_field', 'static', 'role']);
 export const digestScheduleEnum = z.enum(['hourly', 'daily', 'weekly']);
 export const notificationStatusEnum = z.enum([
-  'pending', 'sent', 'failed', 'queued_digest', 'skipped', 'held',
+  'pending', 'sent', 'sent_sandbox', 'failed', 'queued_digest', 'skipped', 'held',
 ]);
 
 // ─── Tenant Channel Config ──────────────────────────────────────────
 
-export const emailChannelConfigSchema = z.object({
-  apiKey: z.string().min(1),
-  from: z.string().min(1),
-});
+// Phase 7 H6 — multi-domain support. Tenants may register multiple verified
+// Resend domains; one entry MUST have `default: true`. Per-rule overrides
+// (see `notification_rules.from_domain_override`) pick a non-default entry.
+const DOMAIN_REGEX = /^[a-z0-9.-]+$/i;
+
+export const fromDomainsSchema = z
+  .array(
+    z.object({
+      domain: z.string().regex(DOMAIN_REGEX),
+      default: z.boolean(),
+    }),
+  )
+  .min(1)
+  .superRefine((arr, ctx) => {
+    const defaults = arr.filter((e) => e.default);
+    if (defaults.length !== 1) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Exactly one fromDomains entry must have default: true',
+      });
+    }
+  });
+
+// Phase 7.5 fix — apiKey is required UNLESS sandbox=true. Sandbox-only
+// tenants (CI environments, staging) can omit apiKey entirely; the H5
+// short-circuit in `email.ts` fires before any Resend call. Without this
+// `superRefine`, sandbox-only configs failed Zod validation, the resolver
+// returned null, and the dispatcher silently fell back to the env-var
+// Resend client — bypassing sandbox. See gotcha 2026-04-26-sandbox-requires-fake-api-key.md.
+export const emailChannelConfigSchema = z
+  .object({
+    apiKey: z.string().min(1).optional(),
+    from: z.string().min(1),
+    replyTo: z.string().email().optional(),
+    // Phase 7 H4 — tenant-supplied URL that the Hub POSTs delivery
+    // callbacks to (HMAC-signed via `tenants.delivery_callback_secret`).
+    deliveryCallbackUrl: z.string().url().optional(),
+    // Phase 7 H5 — when true, the Hub logs outgoing email at info level
+    // and skips the Resend send. Notifications land as `sent_sandbox`.
+    // Default behavior when the field is absent is equivalent to `false`
+    // (the email branch checks `config.sandbox === true` strictly), so we
+    // leave it undefined-when-omitted rather than injecting `false` — that
+    // keeps the resolved config minimal and avoids polluting downstream
+    // equality assertions in tests.
+    sandbox: z.boolean().optional(),
+    // Phase 7 H6 — list of verified sending domains. When set, the dispatcher
+    // chooses a domain via rule override → tenant default → first entry, and
+    // composes the final `From` string by combining the local-part of `from`
+    // with the chosen domain. Absent → legacy single-domain behavior (the
+    // `from` field is passed through verbatim).
+    fromDomains: fromDomainsSchema.optional(),
+  })
+  .superRefine((cfg, ctx) => {
+    if (cfg.sandbox !== true && (!cfg.apiKey || cfg.apiKey.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['apiKey'],
+        message: 'apiKey required unless sandbox=true',
+      });
+    }
+  });
 
 export const telegramChannelConfigSchema = z.object({
   botToken: z.string().min(1),
   botUsername: z.string().min(1),
 });
 
+// Phase 7 7b — Per-tenant rate-limit overrides on `tenants.config.rate_limits`.
+// Stored on the freeform `config` JSONB; surfaced via PATCH /api/admin/tenants/:id/rate-limit.
+// Range 1–1000 enforced at the API boundary; the resolver caps defensively.
+//
+// Defined here (above tenantChannelConfigSchema) so the top-level config validator
+// can compose it. The standalone export below keeps existing imports working.
+const rateLimitsConfigSchemaInternal = z.object({
+  events_per_minute: z.number().int().min(1).max(1000),
+});
+
+// Top-level tenant config validator (Phase 7 7b). Validates the SHAPE of
+// known sections (channels, rate_limits) when present; passes through
+// unknown top-level keys for legacy compat (existing tenants may store
+// ad-hoc fields like `dedup_window`).
 export const tenantChannelConfigSchema = z.object({
   channels: z.object({
     email: emailChannelConfigSchema.optional(),
     telegram: telegramChannelConfigSchema.optional(),
   }).optional(),
-});
+  rate_limits: rateLimitsConfigSchemaInternal.optional(),
+}).passthrough();
 
 // ─── Rules ───────────────────────────────────────────────────────────
 
-export const createRuleSchema = z.object({
-  event_type: z.string().min(1),
-  channel: channelEnum,
-  template_id: z.string().uuid(),
-  recipient_type: recipientTypeEnum,
-  recipient_value: z.string().min(1),
-  urgency: urgencyEnum.optional().default('normal'),
-  enabled: z.boolean().optional().default(true),
-});
+// Phase 7 H6 — per-rule sending-domain override. Validated against the
+// same simple domain regex used by `fromDomains`. Nullable so callers can
+// clear an override on update.
+export const fromDomainOverrideSchema = z
+  .string()
+  .regex(DOMAIN_REGEX)
+  .nullable()
+  .optional();
+
+// Phase 7 7b — Static recipient shape validators.
+// Only enforced when `recipient_type === 'static'`. Payload-path
+// (`event_field`) and `role`-typed recipients can't be validated at create
+// time — they resolve at dispatch from the event body.
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^\+?\d{7,}$/;
+const TELEGRAM_USERNAME_REGEX = /^@?[a-zA-Z0-9_]{4,32}$/;
+const TELEGRAM_CHAT_ID_REGEX = /^-?\d{5,}$/;
+
+function validateStaticRecipient(
+  channel: 'email' | 'sms' | 'in_app' | 'telegram',
+  recipientType: string,
+  recipientValue: string,
+): string | null {
+  if (recipientType !== 'static') return null;
+  if (channel === 'email') {
+    return EMAIL_REGEX.test(recipientValue)
+      ? null
+      : 'recipient_value must be a valid email address when channel=email and recipient_type=static';
+  }
+  if (channel === 'sms') {
+    return PHONE_REGEX.test(recipientValue)
+      ? null
+      : 'recipient_value must be a phone number (digits, optional +) when channel=sms and recipient_type=static';
+  }
+  if (channel === 'telegram') {
+    return TELEGRAM_USERNAME_REGEX.test(recipientValue) ||
+      TELEGRAM_CHAT_ID_REGEX.test(recipientValue)
+      ? null
+      : 'recipient_value must be a Telegram username (@handle) or numeric chat_id when channel=telegram and recipient_type=static';
+  }
+  // in_app uses userId — accept any non-empty string (already enforced by min(1))
+  return null;
+}
+
+export const createRuleSchema = z
+  .object({
+    event_type: z.string().min(1),
+    channel: channelEnum,
+    template_id: z.string().uuid(),
+    recipient_type: recipientTypeEnum,
+    recipient_value: z.string().min(1),
+    urgency: urgencyEnum.optional().default('normal'),
+    enabled: z.boolean().optional().default(true),
+    from_domain_override: fromDomainOverrideSchema,
+  })
+  .superRefine((data, ctx) => {
+    const err = validateStaticRecipient(
+      data.channel,
+      data.recipient_type,
+      data.recipient_value,
+    );
+    if (err) {
+      ctx.addIssue({
+        code: 'custom',
+        message: err,
+        path: ['recipient_value'],
+      });
+    }
+  });
 
 export const updateRuleSchema = z.object({
   event_type: z.string().min(1).optional(),
@@ -49,15 +181,68 @@ export const updateRuleSchema = z.object({
   recipient_value: z.string().min(1).optional(),
   urgency: urgencyEnum.optional(),
   enabled: z.boolean().optional(),
+  from_domain_override: fromDomainOverrideSchema,
 });
 
 // ─── Templates ───────────────────────────────────────────────────────
+
+// Per-attachment config — strict so unknown keys are rejected
+export const attachmentConfigEntrySchema = z
+  .object({
+    filename_template: z.string().min(1),
+    url_field: z.string().min(1),
+  })
+  .strict();
+
+export const attachmentsConfigSchema = z
+  .array(attachmentConfigEntrySchema)
+  .nullable()
+  .optional();
+
+// ─── Custom email headers (RFC 8058 List-Unsubscribe support) ───────
+//
+// Header names must match RFC-822 token (`A-Z`, `a-z`, `0-9`, `-`).
+// Values are Handlebars template strings (rendered per-event).
+// Reserved names that Resend manages — overriding could break delivery.
+const RESERVED_HEADER_NAMES = ['content-type', 'from', 'to', 'subject'] as const;
+const HEADER_NAME_REGEX = /^[A-Za-z0-9-]+$/;
+
+export const headersSchema = z
+  .record(z.string().regex(HEADER_NAME_REGEX), z.string().min(1))
+  .nullable()
+  .optional()
+  .superRefine((val, ctx) => {
+    if (val == null) return;
+    for (const name of Object.keys(val)) {
+      if (RESERVED_HEADER_NAMES.includes(name.toLowerCase() as (typeof RESERVED_HEADER_NAMES)[number])) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `Header name '${name}' is reserved by Resend; cannot override`,
+          path: [name],
+        });
+      }
+    }
+  });
+
+// Phase 7 H9 — locale tag for multi-language template variants.
+// Range 2..10 covers `'en'` / `'de'` (2-char) up to `'pt-BR'` / `'zh-Hant'`
+// (mid-length BCP-47 tags). Server normalizes to lowercase at query time —
+// stored verbatim per tenant authoring convention.
+export const localeSchema = z.string().min(2).max(10);
 
 export const createTemplateSchema = z.object({
   name: z.string().min(1),
   channel: channelEnum,
   subject: z.string().optional(),
   body: z.string().min(1),
+  // Phase 7 H8 — optional plain-text body for non-HTML clients. When omitted,
+  // Resend auto-generates a text alternative from the HTML body.
+  body_text: z.string().nullable().optional(),
+  // Phase 7 H9 — locale variant. Defaults to 'en' when absent.
+  locale: localeSchema.optional().default('en'),
+  attachments_config: attachmentsConfigSchema,
+  reply_to: z.string().email().nullable().optional(),
+  headers: headersSchema,
 });
 
 export const updateTemplateSchema = z.object({
@@ -65,6 +250,16 @@ export const updateTemplateSchema = z.object({
   channel: channelEnum.optional(),
   subject: z.string().optional(),
   body: z.string().min(1).optional(),
+  body_text: z.string().nullable().optional(),
+  locale: localeSchema.optional(),
+  attachments_config: attachmentsConfigSchema,
+  reply_to: z.string().email().nullable().optional(),
+  headers: headersSchema,
+});
+
+// Phase 7 H9 — list endpoint locale filter. When omitted, return all locales.
+export const listTemplatesQuerySchema = z.object({
+  locale: localeSchema.optional(),
 });
 
 export const previewTemplateSchema = z.object({
@@ -97,6 +292,16 @@ export const publishEventSchema = z.object({
 
 // ─── Admin Tenants ───────────────────────────────────────────────────
 
+// Phase 7 H7 — Per-tenant rate-limit overrides on `tenants.config.rate_limits`.
+// Stored on the freeform `config` JSONB; surfaced via PATCH /api/admin/tenants/:id/rate-limit.
+// Range 1–1000 enforced at the API boundary; the resolver caps defensively.
+// Re-exports the internal schema defined above for tenantChannelConfigSchema.
+export const rateLimitsConfigSchema = rateLimitsConfigSchemaInternal;
+
+export const updateTenantRateLimitSchema = z.object({
+  events_per_minute: z.number().int().min(1).max(1000),
+});
+
 export const createTenantSchema = z.object({
   name: z.string().min(1),
   config: z.record(z.string(), z.unknown()).optional(),
@@ -113,6 +318,26 @@ export const updateTenantSchema = z.object({
 export const upsertHeartbeatSchema = z.object({
   source_name: z.string().min(1),
   interval_minutes: z.number().int().min(1).optional(),
+});
+
+// ─── Suppressions (Phase 7 H10) ─────────────────────────────────────
+
+export const suppressionReasonEnum = z.enum([
+  'manual',
+  'unsubscribed',
+  'hard_bounce',
+  'complaint',
+]);
+
+export const createSuppressionSchema = z.object({
+  recipient: z.string().email(),
+  reason: suppressionReasonEnum.optional().default('manual'),
+  expires_at: z.string().datetime().nullable().optional(),
+});
+
+export const listSuppressionsQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional().default(50),
 });
 
 // ─── Pagination ──────────────────────────────────────────────────────

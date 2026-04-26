@@ -59,4 +59,15 @@ describe('GET /api/health', () => {
     expect(body).toHaveProperty('kafka');
     expect(body).toHaveProperty('resend');
   });
+
+  // Phase 7 7b — Health-check axis: email_delivery_events_24h_count
+  it('returns email_delivery_events_24h_count as a number', async () => {
+    const app = await buildTestApp();
+    const response = await app.inject({ method: 'GET', url: '/api/health' });
+
+    const body = response.json();
+    expect(body).toHaveProperty('email_delivery_events_24h_count');
+    expect(typeof body.email_delivery_events_24h_count).toBe('number');
+    expect(body.email_delivery_events_24h_count).toBeGreaterThanOrEqual(0);
+  });
 });

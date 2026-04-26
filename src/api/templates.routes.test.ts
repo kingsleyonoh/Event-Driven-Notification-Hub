@@ -72,9 +72,12 @@ describe('Templates CRUD API', () => {
     expect(response.json().template.name).toBe('__digest');
   });
 
-  it('POST /api/templates — rejects duplicate name per tenant', async () => {
+  it('POST /api/templates — rejects duplicate (name, locale, channel) per tenant', async () => {
     const app = await buildTestApp();
-    // First create
+    // Phase 7 7b — uniqueness is now `(tenant_id, name, locale, channel)`,
+    // so a duplicate must match all three (same name, same locale, same
+    // channel). Different channels with the same name are intentionally
+    // valid (e.g. tenants want a `welcome` email AND a `welcome` sms).
     await app.inject({
       method: 'POST',
       url: '/api/templates',
@@ -82,16 +85,36 @@ describe('Templates CRUD API', () => {
       payload: { name: 'dup-name', channel: 'sms', body: 'first' },
     });
 
-    // Duplicate
     const response = await app.inject({
       method: 'POST',
       url: '/api/templates',
       headers: headers(),
-      payload: { name: 'dup-name', channel: 'email', body: 'second' },
+      payload: { name: 'dup-name', channel: 'sms', body: 'second' },
     });
 
     expect(response.statusCode).toBe(409);
     expect(response.json().error.code).toBe('CONFLICT');
+  });
+
+  it('POST /api/templates — allows same name across different channels (Phase 7 7b)', async () => {
+    const app = await buildTestApp();
+    await app.inject({
+      method: 'POST',
+      url: '/api/templates',
+      headers: headers(),
+      payload: { name: 'multi-channel', channel: 'sms', body: 'sms variant' },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/templates',
+      headers: headers(),
+      payload: { name: 'multi-channel', channel: 'email', body: 'email variant' },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().template.name).toBe('multi-channel');
+    expect(response.json().template.channel).toBe('email');
   });
 
   it('GET /api/templates — lists templates for tenant', async () => {
