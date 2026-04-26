@@ -163,3 +163,78 @@ describe('processNotification — sandbox mode (integration)', () => {
     expect(notif.status).toBe('sent');
   });
 });
+
+// Phase 7.5 — regression test for the sandbox+missing-apiKey gotcha
+// (gotcha 2026-04-26-sandbox-requires-fake-api-key.md). A sandbox-only
+// tenant with NO apiKey set in config previously failed Zod validation,
+// the resolver returned null, and the dispatcher fell back to the env-var
+// Resend client — silently bypassing sandbox and attempting a real send.
+// Fix: emailChannelConfigSchema.superRefine makes apiKey optional when
+// sandbox=true. This test enforces the contract end-to-end at the pipeline
+// level: a sandbox-only tenant (no apiKey) MUST land on sent_sandbox.
+describe('processNotification — sandbox-only tenant without apiKey (Phase 7.5 regression)', () => {
+  let sbTenant: Awaited<ReturnType<typeof createTestTenant>>;
+  let sbTemplate: Awaited<ReturnType<typeof createTestTemplate>>;
+  let sbRule: Awaited<ReturnType<typeof createTestRule>>;
+
+  beforeAll(async () => {
+    sbTenant = await createTestTenant(db, {
+      config: {
+        channels: {
+          email: {
+            // NO apiKey — sandbox-only tenant should still reach the
+            // H5 short-circuit because superRefine treats apiKey as
+            // optional when sandbox === true.
+            from: 'noreply@sandbox-only.test',
+            sandbox: true,
+          },
+        },
+      },
+    });
+    sbTemplate = await createTestTemplate(db, sbTenant.id, {
+      subject: 'No-key sandbox subject',
+      body: 'No-key sandbox body',
+    });
+    sbRule = await createTestRule(db, sbTenant.id, sbTemplate.id, {
+      eventType: 'sandbox.nokey',
+      channel: 'email',
+      recipientType: 'static',
+      recipientValue: 'nokey@example.com',
+    });
+  });
+
+  afterAll(async () => {
+    await cleanupTestData(db, sbTenant.id);
+  });
+
+  it('sandbox-only tenant (no apiKey) reaches sent_sandbox without invoking Resend', async () => {
+    const [row] = await db.select().from(tenants).where(eq(tenants.id, sbTenant.id));
+    const tenantConfig = row?.config ?? null;
+
+    const event = {
+      tenant_id: sbTenant.id,
+      event_type: 'sandbox.nokey',
+      event_id: `sb-nokey-${Date.now()}`,
+      payload: { n: '99' },
+      timestamp: new Date().toISOString(),
+    };
+
+    await processNotification(db, event, sbRule, 'nokey@example.com', {
+      dedupWindowMinutes: 60,
+      digestSchedule: 'daily',
+      tenantConfig,
+    });
+
+    // Resend NEVER called — H5 short-circuit fires before any Resend
+    // client is constructed (which would have thrown on missing apiKey).
+    expect(mockResendSend).not.toHaveBeenCalled();
+
+    const [notif] = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.eventId, event.event_id));
+    expect(notif).toBeDefined();
+    expect(notif.status).toBe('sent_sandbox');
+    expect(notif.errorMessage).toBeNull();
+  });
+});

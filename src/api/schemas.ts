@@ -35,28 +35,44 @@ export const fromDomainsSchema = z
     }
   });
 
-export const emailChannelConfigSchema = z.object({
-  apiKey: z.string().min(1),
-  from: z.string().min(1),
-  replyTo: z.string().email().optional(),
-  // Phase 7 H4 — tenant-supplied URL that the Hub POSTs delivery
-  // callbacks to (HMAC-signed via `tenants.delivery_callback_secret`).
-  deliveryCallbackUrl: z.string().url().optional(),
-  // Phase 7 H5 — when true, the Hub logs outgoing email at info level
-  // and skips the Resend send. Notifications land as `sent_sandbox`.
-  // Default behavior when the field is absent is equivalent to `false`
-  // (the email branch checks `config.sandbox === true` strictly), so we
-  // leave it undefined-when-omitted rather than injecting `false` — that
-  // keeps the resolved config minimal and avoids polluting downstream
-  // equality assertions in tests.
-  sandbox: z.boolean().optional(),
-  // Phase 7 H6 — list of verified sending domains. When set, the dispatcher
-  // chooses a domain via rule override → tenant default → first entry, and
-  // composes the final `From` string by combining the local-part of `from`
-  // with the chosen domain. Absent → legacy single-domain behavior (the
-  // `from` field is passed through verbatim).
-  fromDomains: fromDomainsSchema.optional(),
-});
+// Phase 7.5 fix — apiKey is required UNLESS sandbox=true. Sandbox-only
+// tenants (CI environments, staging) can omit apiKey entirely; the H5
+// short-circuit in `email.ts` fires before any Resend call. Without this
+// `superRefine`, sandbox-only configs failed Zod validation, the resolver
+// returned null, and the dispatcher silently fell back to the env-var
+// Resend client — bypassing sandbox. See gotcha 2026-04-26-sandbox-requires-fake-api-key.md.
+export const emailChannelConfigSchema = z
+  .object({
+    apiKey: z.string().min(1).optional(),
+    from: z.string().min(1),
+    replyTo: z.string().email().optional(),
+    // Phase 7 H4 — tenant-supplied URL that the Hub POSTs delivery
+    // callbacks to (HMAC-signed via `tenants.delivery_callback_secret`).
+    deliveryCallbackUrl: z.string().url().optional(),
+    // Phase 7 H5 — when true, the Hub logs outgoing email at info level
+    // and skips the Resend send. Notifications land as `sent_sandbox`.
+    // Default behavior when the field is absent is equivalent to `false`
+    // (the email branch checks `config.sandbox === true` strictly), so we
+    // leave it undefined-when-omitted rather than injecting `false` — that
+    // keeps the resolved config minimal and avoids polluting downstream
+    // equality assertions in tests.
+    sandbox: z.boolean().optional(),
+    // Phase 7 H6 — list of verified sending domains. When set, the dispatcher
+    // chooses a domain via rule override → tenant default → first entry, and
+    // composes the final `From` string by combining the local-part of `from`
+    // with the chosen domain. Absent → legacy single-domain behavior (the
+    // `from` field is passed through verbatim).
+    fromDomains: fromDomainsSchema.optional(),
+  })
+  .superRefine((cfg, ctx) => {
+    if (cfg.sandbox !== true && (!cfg.apiKey || cfg.apiKey.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['apiKey'],
+        message: 'apiKey required unless sandbox=true',
+      });
+    }
+  });
 
 export const telegramChannelConfigSchema = z.object({
   botToken: z.string().min(1),

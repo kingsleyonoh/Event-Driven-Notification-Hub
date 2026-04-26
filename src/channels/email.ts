@@ -11,7 +11,12 @@ export interface EmailAttachment {
 }
 
 export interface EmailConfig {
-  apiKey: string;
+  // Phase 7.5 — `apiKey` is optional when `sandbox: true`. The H5 short-circuit
+  // (line ~61 below) returns before any Resend client is constructed, so a
+  // sandbox-only tenant doesn't need a real key. For non-sandbox dispatches,
+  // `emailChannelConfigSchema.superRefine` enforces apiKey at the API boundary
+  // — the runtime invariant here is "apiKey is set whenever sandbox isn't true."
+  apiKey?: string;
   from: string;
   replyTo?: string;
   attachments?: EmailAttachment[];
