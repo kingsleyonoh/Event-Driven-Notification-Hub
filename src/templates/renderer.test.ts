@@ -48,3 +48,57 @@ describe('renderSubjectAndBody', () => {
     expect(result.renderedBody).toBe('Body text');
   });
 });
+
+describe('capacity notification rendering', () => {
+  const overCapPayload = {
+    budgetName: 'Notification Copy Polish Check',
+    warningState: 'over_cap',
+    thresholdKey: 'over_cap',
+    remaining: -0.1,
+    overageAmount: 0.1,
+    unitType: 'hours',
+  };
+
+  it('renders over-cap HTML with readable labels, over-by copy, and critical color', () => {
+    const html = renderTemplate(
+      '<div style="border-left:4px solid {{stateAccentColor}}">' +
+        '<span>Status: {{warningState}}</span>' +
+        '<p>{{balanceLabel}}: {{balanceValue}}</p>' +
+        '</div>',
+      overCapPayload,
+    );
+
+    expect(html).toContain('Status: Over cap');
+    expect(html).toContain('Over by: 0.1 hours');
+    expect(html).toContain('#dc2626');
+    expect(html).not.toContain('over_cap');
+    expect(html).not.toContain('-0.1 hours');
+  });
+
+  it('renders over-cap plain text without raw state or negative remaining', () => {
+    const text = renderTemplate(
+      'Status: {{warningState}}\n{{balanceLabel}}: {{balanceValue}}',
+      overCapPayload,
+    );
+
+    expect(text).toContain('Status: Over cap');
+    expect(text).toContain('Over by: 0.1 hours');
+    expect(text).not.toContain('over_cap');
+    expect(text).not.toContain('-0.1 hours');
+  });
+
+  it('renders warning and cap states with readable labels and semantic colors', () => {
+    const warning = renderTemplate(
+      '<span style="color:{{stateAccentColor}}">{{warningState}}</span>',
+      { budgetName: 'Budget', warningState: 'warning', remaining: 0.2, unitType: 'hours' },
+    );
+    const cap = renderTemplate(
+      'Status: {{warningState}}',
+      { budgetName: 'Budget', thresholdKey: 'cap_reached', warningState: 'warning', remaining: 0, unitType: 'hours' },
+    );
+
+    expect(warning).toContain('Near cap');
+    expect(warning).toContain('#d97706');
+    expect(cap).toContain('Cap reached');
+  });
+});
